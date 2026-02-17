@@ -2,8 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  body {
-    @apply font-sans text-gray-900 bg-surface antialiased;
-  }
+/* 文字が確実に見えるようにベース色を強制（Tailwind の上書きは utilities で有効） */
+html {
+  min-height: 100vh;
+}
+body {
+  min-height: 100vh;
+  margin: 0;
+  font-family: "Noto Sans JP", "Hiragino Sans", "Meiryo", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background-color: #f8fafc;
+  color: #0f172a !important;
+}
+#root {
+  min-height: 100vh;
+  color: #0f172a !important;
+}
+/* 子要素は親の色を継承。ボタン等は各コンポーネントの text-white 等で上書き */
+#root div,
+#root p,
+#root span,
+#root h1,
+#root h2,
+#root h3,
+#root label,
+#root li {
+  color: inherit;
+}
+/* 青ボタンは白文字 */
+[class*="bg-blue-500"] [class*="text-white"],
+[class*="bg-blue-600"],
+button.bg-blue-500,
+button.bg-blue-600,
+a.bg-blue-500,
+a.bg-blue-600 {
+  color: #fff !important;
 }

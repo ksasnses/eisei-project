@@ -17,7 +17,6 @@ import {
   getDefaultExamDate,
   formatDateForInput,
   parseTimeToMinutes,
-  minutesToTimeStr,
   daysUntilExam,
 } from '../utils/dateUtils';
 
@@ -115,8 +114,7 @@ export function WizardPage() {
       return (
         selectedSubjectIds.length > 0 &&
         (() => {
-          const { required, selectGroups } = availableSubjectsForStep2;
-          const requiredSet = new Set(required);
+          const { selectGroups } = availableSubjectsForStep2;
           for (const sg of selectGroups) {
             const selectedInGroup = selectedSubjectIds.filter((id) =>
               sg.subjectIds.includes(id)
@@ -171,10 +169,12 @@ export function WizardPage() {
       setSubjectDetails((prev) => ({
         ...prev,
         [id]: {
-          currentScore: 50,
-          targetScore: 70,
-          difficulty: 3,
-          textbooks: [],
+          ...{
+            currentScore: 50,
+            targetScore: 70,
+            difficulty: 3,
+            textbooks: [] as string[],
+          },
           ...prev[id],
         },
       }));
@@ -195,14 +195,14 @@ export function WizardPage() {
     setSelectedSubjectIds([...others, ...toAdd]);
     setSubjectDetails((prev) => {
       const next = { ...prev };
+      const defaults = {
+        currentScore: 50,
+        targetScore: 70,
+        difficulty: 3,
+        textbooks: [] as string[],
+      };
       toAdd.forEach((id) => {
-        next[id] = {
-          currentScore: 50,
-          targetScore: 70,
-          difficulty: 3,
-          textbooks: [],
-          ...prev[id],
-        };
+        next[id] = { ...defaults, ...prev[id] };
       });
       return next;
     });
@@ -297,16 +297,16 @@ export function WizardPage() {
                       }
                     }
                     setSelectedSubjectIds(initialSelected);
+                    const defaults = {
+                      currentScore: 50,
+                      targetScore: 70,
+                      difficulty: 3,
+                      textbooks: [] as string[],
+                    };
                     initialSelected.forEach((id) => {
                       setSubjectDetails((prev) => ({
                         ...prev,
-                        [id]: {
-                          currentScore: 50,
-                          targetScore: 70,
-                          difficulty: 3,
-                          textbooks: [],
-                          ...prev[id],
-                        },
+                        [id]: { ...defaults, ...prev[id] },
                       }));
                     });
                   }}
@@ -359,9 +359,6 @@ export function WizardPage() {
 
             {availableSubjectsForStep2.selectGroups.map((sg) => {
               if (sg.from === '全科目') {
-                const selected = selectedSubjectIds.filter((id) =>
-                  sg.subjectIds.includes(id)
-                );
                 return (
                   <div key={sg.from} className="mt-4">
                     <p className="mb-2 text-sm font-medium text-slate-600">

@@ -16,7 +16,7 @@ export default {
         card: '#FFFFFF',
       },
       fontFamily: {
-        sans: ['"Noto Sans JP"', 'sans-serif'],
+        sans: ['"Noto Sans JP"', 'Hiragino Sans', 'Meiryo', 'sans-serif'],
       },
     },
   },

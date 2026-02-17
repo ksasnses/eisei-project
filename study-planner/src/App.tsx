@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { useStudentStore } from './stores/studentStore';
 import { BottomNav } from './components/BottomNav';
@@ -20,12 +21,47 @@ function InitializedGuard({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
+  const [hydrated, setHydrated] = useState(false);
   const isInitialized = useStudentStore((s) => s.isInitialized);
+
+  useEffect(() => {
+    const persistApi = useStudentStore.persist;
+    if (persistApi?.hasHydrated?.()) {
+      setHydrated(true);
+      return;
+    }
+    const unsub = persistApi?.onFinishHydration?.(() => setHydrated(true));
+    const fallback = setTimeout(() => setHydrated(true), 1500);
+    return () => {
+      unsub?.();
+      clearTimeout(fallback);
+    };
+  }, []);
+
+  if (!hydrated) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#f8fafc',
+          color: '#0f172a',
+          fontFamily: 'sans-serif',
+        }}
+      >
+        <p style={{ margin: 0, fontSize: '1rem', color: '#0f172a' }}>
+          読み込み中...
+        </p>
+      </div>
+    );
+  }
 
   return (
     <BrowserRouter>
       <InitializedGuard>
-        <div className="min-h-screen bg-slate-50">
+        <div className="min-h-screen bg-slate-50" style={{ color: '#0f172a' }}>
           {isInitialized && (
             <header className="border-b border-slate-200 bg-white px-4 py-3">
               <h1 className="text-xl font-bold text-slate-800">eisei project</h1>

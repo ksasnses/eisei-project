@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Flame, Tomato, BarChart3, Calendar, Settings } from 'lucide-react';
+import { Flame, Clock, BarChart3, Calendar, Settings } from 'lucide-react';
 import { useStudentStore } from '../stores/studentStore';
 import { useStudyStore } from '../stores/studyStore';
 import { getPhaseByDaysLeft } from '../constants/phaseConfig';
@@ -99,7 +99,6 @@ export function DashboardPage() {
 
   const daysLeft = profile ? daysUntilExam(profile.examDate) : 0;
   const phase = getPhaseByDaysLeft(daysLeft);
-  const todayStr = format(new Date(), 'yyyy-MM-dd');
   const dayOfWeek = new Date().getDay();
   const isClubDay = profile?.dailySchedule.clubDays.includes(dayOfWeek) ?? false;
   const studyHours = isClubDay ? '約2.5' : '約4.5';
@@ -189,7 +188,7 @@ export function DashboardPage() {
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center gap-2 text-slate-500">
-            <Tomato className="h-5 w-5 text-red-500" />
+            <Clock className="h-5 w-5 text-red-500" />
             <span className="text-xs">累計ポモドーロ</span>
           </div>
           <div className="mt-1 text-xl font-bold text-slate-800">
