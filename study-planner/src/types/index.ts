@@ -57,6 +57,13 @@ export interface SelectedSubject {
   textbooks: string[];
 }
 
+/** 得点履歴（模試等） */
+export interface ScoreRecord {
+  subjectId: string;
+  date: string;
+  score: number;
+}
+
 /** 1日の生活スケジュール */
 export interface DailySchedule {
   wakeUpTime: string;
@@ -138,4 +145,20 @@ export interface PomodoroConfig {
   breakMinutes: number;
   longBreakAfter: number;
   longBreakMinutes: number;
+}
+
+/** 仮本番の日程（1日目・2日目の日付） */
+export interface MockExamSchedule {
+  day1Date: string;
+  day2Date: string;
+}
+
+/** 仮本番の結果（1日目 or 2日目ごとに1件） */
+export interface MockExamResult {
+  id: string;
+  date: string;
+  day: 1 | 2;
+  scores: Record<string, number>;
+  total: number;
+  completedAt: string;
 }

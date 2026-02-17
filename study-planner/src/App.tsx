@@ -22,7 +22,19 @@ function InitializedGuard({ children }: { children: React.ReactNode }) {
 
 function App() {
   const [hydrated, setHydrated] = useState(false);
+  const [storageError, setStorageError] = useState<string | null>(null);
   const isInitialized = useStudentStore((s) => s.isInitialized);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('__storage_test__', '1');
+      localStorage.removeItem('__storage_test__');
+    } catch (e) {
+      if (e instanceof DOMException && (e.code === 22 || e.name === 'QuotaExceededError')) {
+        setStorageError('保存容量が不足しています。不要なデータを削除してください。');
+      }
+    }
+  }, []);
 
   useEffect(() => {
     const persistApi = useStudentStore.persist;
@@ -62,6 +74,11 @@ function App() {
     <BrowserRouter>
       <InitializedGuard>
         <div className="min-h-screen bg-slate-50" style={{ color: '#0f172a' }}>
+          {storageError && (
+            <div className="bg-amber-100 px-4 py-2 text-center text-sm text-amber-900">
+              {storageError}
+            </div>
+          )}
           {isInitialized && (
             <header className="border-b border-slate-200 bg-white px-4 py-3">
               <h1 className="text-xl font-bold text-slate-800">eisei project</h1>

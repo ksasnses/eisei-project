@@ -1,69 +1,27 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { format } from 'date-fns';
+import { format, subDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Flame, Clock, BarChart3, Calendar, Settings } from 'lucide-react';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+} from 'recharts';
+import { Flame, Clock, BarChart3, Calendar, Settings, Bus, TrendingUp } from 'lucide-react';
 import { useStudentStore } from '../stores/studentStore';
 import { useStudyStore } from '../stores/studyStore';
 import { getPhaseByDaysLeft } from '../constants/phaseConfig';
 import { getSubjectById } from '../constants/subjects';
 import { daysUntilExam } from '../utils/dateUtils';
 import type { StudyTask } from '../types';
-
-/** 仮の今日のタスク（Step 5 で差し替え） */
-const MOCK_TASKS: StudyTask[] = [
-  {
-    id: 'mock-1',
-    subjectId: 'eng_r',
-    type: 'review',
-    content: '英単語 ターゲット1900 Section 8-10',
-    pomodoroType: 'memorization',
-    pomodoroCount: 1,
-    estimatedMinutes: 20,
-    reviewSource: { originalDate: new Date().toISOString(), reviewNumber: 3 },
-    completed: false,
-  },
-  {
-    id: 'mock-2',
-    subjectId: 'math1a',
-    type: 'new',
-    content: '数学ⅠA チャート式 例題 45-52',
-    pomodoroType: 'thinking',
-    pomodoroCount: 1,
-    estimatedMinutes: 30,
-    completed: false,
-  },
-  {
-    id: 'mock-3',
-    subjectId: 'physics',
-    type: 'new',
-    content: '物理 セミナー物理 力学・波動',
-    pomodoroType: 'thinking',
-    pomodoroCount: 1,
-    estimatedMinutes: 30,
-    completed: false,
-  },
-  {
-    id: 'mock-4',
-    subjectId: 'japanese',
-    type: 'new',
-    content: '古文単語 ゴロゴ 第5章',
-    pomodoroType: 'memorization',
-    pomodoroCount: 1,
-    estimatedMinutes: 20,
-    completed: false,
-  },
-  {
-    id: 'mock-5',
-    subjectId: 'his_jp',
-    type: 'new',
-    content: '日本史 一問一答 第4章（江戸時代）',
-    pomodoroType: 'memorization',
-    pomodoroCount: 1,
-    estimatedMinutes: 20,
-    completed: false,
-  },
-];
 
 const TYPE_LABELS: Record<StudyTask['type'], string> = {
   new: '新規学習',
@@ -86,43 +44,37 @@ export function DashboardPage() {
   const events = useStudentStore((s) => s.events);
   const streakDays = useStudyStore((s) => s.streakDays);
   const totalPomodoros = useStudyStore((s) => s.totalPomodoros);
+  const dailyPlans = useStudyStore((s) => s.dailyPlans);
+  const completedTasks = useStudyStore((s) => s.completedTasks);
+  const generateDailyPlan = useStudyStore((s) => s.generateDailyPlan);
   const completeTask = useStudyStore((s) => s.completeTask);
   const skipTask = useStudyStore((s) => s.skipTask);
 
-  const [localCompleted, setLocalCompleted] = useState<Set<string>>(new Set());
-  const tasksWithCompleted = useMemo(() => {
-    return MOCK_TASKS.map((t) => ({
-      ...t,
-      completed: localCompleted.has(t.id),
-    }));
-  }, [localCompleted]);
+  const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
+  const plan = dailyPlans[today];
+  const tasks = plan?.tasks ?? [];
+
+  useEffect(() => {
+    if (profile && !plan) generateDailyPlan(today);
+  }, [profile, today, plan, generateDailyPlan]);
 
   const daysLeft = profile ? daysUntilExam(profile.examDate) : 0;
   const phase = getPhaseByDaysLeft(daysLeft);
-  const dayOfWeek = new Date().getDay();
-  const isClubDay = profile?.dailySchedule.clubDays.includes(dayOfWeek) ?? false;
-  const studyHours = isClubDay ? '約2.5' : '約4.5';
+  const isClubDay = plan?.isClubDay ?? false;
+  const studyHours =
+    plan != null
+      ? `約${Math.floor(plan.availableMinutes / 60)}時間${plan.availableMinutes % 60 ? plan.availableMinutes % 60 + '分' : ''}`
+      : '—';
 
   const weeklyCompletionRate = 0;
 
   const handleComplete = (taskId: string) => {
-    const task = MOCK_TASKS.find((t) => t.id === taskId);
-    if (task) {
-      setLocalCompleted((prev) => new Set(prev).add(taskId));
-      completeTask(taskId, task.estimatedMinutes);
-    }
+    const task = tasks.find((t) => t.id === taskId);
+    if (task) completeTask(taskId, task.estimatedMinutes);
   };
 
-  const handleSkip = (taskId: string) => {
-    setLocalCompleted((prev) => {
-      const next = new Set(prev);
-      next.delete(taskId);
-      return next;
-    });
-    skipTask(taskId);
-  };
-
-  const allCompleted = tasksWithCompleted.every((t) => t.completed);
+  const allCompleted =
+    tasks.length > 0 && tasks.every((t) => t.completed);
 
   const phaseBadgeClass =
     phase.name === '基礎期'
@@ -146,6 +98,60 @@ export function DashboardPage() {
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .slice(0, 5);
   }, [events]);
+
+  const last7DaysStudy = useMemo(() => {
+    const days: { date: string; 合計: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = subDays(new Date(), i);
+      const dateStr = format(d, 'yyyy-MM-dd');
+      const dayTasks = completedTasks.filter(
+        (t) => t.completedAt && t.completedAt.startsWith(dateStr)
+      );
+      const total = dayTasks.reduce(
+        (sum, t) => sum + (t.actualMinutes ?? t.estimatedMinutes ?? 0),
+        0
+      );
+      days.push({ date: format(d, 'M/d', { locale: ja }), 合計: total });
+    }
+    return days;
+  }, [completedTasks]);
+
+  const subjectTotals = useMemo(() => {
+    const map: Record<string, number> = {};
+    completedTasks.forEach((t) => {
+      const min = t.actualMinutes ?? t.estimatedMinutes ?? 0;
+      map[t.subjectId] = (map[t.subjectId] ?? 0) + min;
+    });
+    return Object.entries(map)
+      .map(([subjectId, minutes]) => ({
+        name: getSubjectById(subjectId)?.name ?? subjectId,
+        value: minutes,
+      }))
+      .filter((s) => s.value > 0);
+  }, [completedTasks]);
+
+  const reviewStats = useMemo(() => {
+    const review = completedTasks.filter((t) => t.reviewSource);
+    const completed = review.filter((t) => t.completed);
+    const total = Math.max(completedTasks.filter((t) => t.reviewSource).length, completed.length);
+    return {
+      completed: completed.length,
+      total,
+      rate: total > 0 ? Math.round((completed.length / total) * 100) : 0,
+    };
+  }, [completedTasks]);
+
+  const commuteSuggestion = useMemo(() => {
+    const memorizationTask = tasks.find((t) => {
+      const sub = getSubjectById(t.subjectId);
+      return sub && sub.memorizationRatio >= 0.5 && !t.completed;
+    });
+    if (memorizationTask) {
+      const sub = getSubjectById(memorizationTask.subjectId);
+      return `${sub?.name ?? memorizationTask.subjectId}の暗記（${memorizationTask.content.slice(0, 20)}…）`;
+    }
+    return '英単語・暗記系のインプット（音声付き推奨）';
+  }, [tasks]);
 
   if (!profile) return null;
 
@@ -174,6 +180,20 @@ export function DashboardPage() {
           </span>
         </div>
       </header>
+
+      {daysLeft <= 30 && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p className="font-medium text-amber-800">
+            仮本番を実施しましょう（月2回推奨）
+          </p>
+          <Link
+            to="/calendar"
+            className="mt-2 inline-block text-sm font-medium text-amber-700 underline"
+          >
+            カレンダーで仮本番を設定 →
+          </Link>
+        </div>
+      )}
 
       {/* モチベーションカード */}
       <section className="mb-6 grid grid-cols-3 gap-3">
@@ -206,6 +226,20 @@ export function DashboardPage() {
         </div>
       </section>
 
+      {/* 通学時間の活用 */}
+      <section className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex items-center gap-2 text-slate-500">
+          <Bus className="h-5 w-5 text-slate-400" />
+          <span className="text-sm font-medium text-slate-700">通学時間の活用</span>
+        </div>
+        <p className="mt-2 text-slate-800">
+          今日の通学時間おすすめ：{commuteSuggestion}
+        </p>
+        <p className="mt-1 text-xs text-slate-500">
+          暗記系のインプットに最適です。音声教材も活用しましょう。
+        </p>
+      </section>
+
       <div className="lg:flex lg:gap-6">
         {/* メイン: 今日のタスク */}
         <main className="min-w-0 flex-1">
@@ -214,20 +248,33 @@ export function DashboardPage() {
               今日の学習計画
             </h2>
             <p className="mb-4 text-sm text-slate-500">
-              {isClubDay
-                ? '今日は部活あり → 勉強可能時間 約2.5時間'
-                : `勉強可能時間 約${studyHours}時間`}
+              {plan != null && (
+                <>
+                  {isClubDay && '今日は部活あり → '}
+                  勉強可能時間 {studyHours}
+                </>
+              )}
             </p>
 
-            {allCompleted ? (
-              <div className="rounded-lg bg-green-50 py-8 text-center text-green-800">
+            {tasks.length === 0 && plan == null && profile && (
+              <p className="py-4 text-center text-slate-500">
+                計画を生成しています...
+              </p>
+            )}
+            {tasks.length === 0 && plan != null && (
+              <p className="py-4 text-center text-slate-500">
+                今日のタスクはありません。明日またお試しください。
+              </p>
+            )}
+            {allCompleted && tasks.length > 0 ? (
+              <div className="task-complete-flash rounded-lg bg-green-50 py-8 text-center text-green-800">
                 <p className="text-lg font-medium">
                   🎉 今日のタスク完了！お疲れさまでした！
                 </p>
               </div>
-            ) : (
+            ) : tasks.length > 0 ? (
               <ul className="space-y-3">
-                {tasksWithCompleted.map((task) => {
+                {tasks.map((task) => {
                   const subject = getSubjectById(task.subjectId);
                   const categoryColor =
                     subject ? CATEGORY_COLORS[subject.category] ?? 'bg-slate-100 text-slate-800' : 'bg-slate-100 text-slate-800';
@@ -242,11 +289,12 @@ export function DashboardPage() {
                     >
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
-                          <span
-                            className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${categoryColor}`}
+                          <Link
+                            to={`/subjects/${task.subjectId}`}
+                            className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${categoryColor} hover:opacity-90`}
                           >
                             {subject?.name ?? task.subjectId}
-                          </span>
+                          </Link>
                           <p className="mt-2 font-medium text-slate-800">
                             {task.content}
                           </p>
@@ -284,7 +332,7 @@ export function DashboardPage() {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleSkip(task.id)}
+                                onClick={() => skipTask(task.id)}
                                 className="text-xs text-slate-400 hover:text-slate-600"
                               >
                                 スキップ
@@ -302,7 +350,7 @@ export function DashboardPage() {
                   );
                 })}
               </ul>
-            )}
+            ) : null}
           </section>
         </main>
 
@@ -343,9 +391,12 @@ export function DashboardPage() {
                 {profile.subjects.slice(0, 6).map((s) => (
                   <li key={s.subjectId}>
                     <div className="flex justify-between text-xs">
-                      <span className="text-slate-600">
+                      <Link
+                        to={`/subjects/${s.subjectId}`}
+                        className="font-medium text-slate-600 hover:text-indigo-600"
+                      >
                         {getSubjectById(s.subjectId)?.name ?? s.subjectId}
-                      </span>
+                      </Link>
                       <span className="text-slate-500">
                         {s.currentScore}→{s.targetScore}
                       </span>
@@ -380,6 +431,66 @@ export function DashboardPage() {
           </div>
         </aside>
       </div>
+
+      {/* 学習統計 */}
+      <section className="mt-8 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-800">
+          <TrendingUp className="h-5 w-5" />
+          学習統計
+        </h2>
+        <div className="grid gap-6 md:grid-cols-2">
+          <div>
+            <h3 className="mb-2 text-sm font-medium text-slate-600">過去7日間の学習時間</h3>
+            <div className="h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={last7DaysStudy} margin={{ top: 4, right: 4, left: 0, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="date" fontSize={12} />
+                  <YAxis fontSize={12} tickFormatter={(v) => `${v}分`} />
+                  <Tooltip formatter={(v: number) => [`${v}分`, '学習時間']} />
+                  <Bar dataKey="合計" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <div>
+            <h3 className="mb-2 text-sm font-medium text-slate-600">科目別累計学習時間</h3>
+            {subjectTotals.length > 0 ? (
+              <div className="h-48">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={subjectTotals}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={60}
+                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    >
+                      {subjectTotals.map((_, i) => (
+                        <Cell key={i} fill={['#3b82f6', '#22c55e', '#eab308', '#ef4444', '#8b5cf6', '#06b6d4'][i % 6]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v: number) => [`${v}分`, '学習時間']} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <p className="py-8 text-center text-sm text-slate-500">データがありません</p>
+            )}
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-4 text-sm">
+          <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-slate-700">
+            連続学習: {streakDays}日
+          </span>
+          <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-slate-700">
+            忘却曲線 復習完了率: {reviewStats.rate}%
+          </span>
+        </div>
+      </section>
     </div>
   );
 }

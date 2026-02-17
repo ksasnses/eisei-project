@@ -364,3 +364,53 @@ export function getSubjectsByCategory(
 export function getSubjectsByDay(day: 1 | 2): Subject[] {
   return SUBJECTS.filter((s) => s.day === day);
 }
+
+/** 共通テスト 1日目の科目ID順（地歴公民→国語→英語R→英語L） */
+export const EXAM_DAY1_ORDER: string[] = [
+  'geo_ex', 'his_jp', 'his_wd', 'civ_eth', 'civ_pol', 'geo_his_civ',
+  'japanese', 'eng_r', 'eng_l',
+];
+
+/** 共通テスト 2日目の科目ID順（理科→数学①→数学②→情報Ⅰ） */
+export const EXAM_DAY2_ORDER: string[] = [
+  'sci_base', 'physics', 'chemistry', 'biology', 'earth_sci',
+  'math1a', 'math2bc', 'info1',
+];
+
+const BREAK_BETWEEN_SUBJECTS_MINUTES = 10;
+
+export interface ExamSlot {
+  type: 'subject' | 'break';
+  subjectId?: string;
+  name?: string;
+  durationSeconds: number;
+}
+
+/** 選択科目のみで仮本番用スロット列を生成（1日分） */
+export function getExamSlotsForDay(
+  subjectIds: string[],
+  dayOrder: string[]
+): ExamSlot[] {
+  const slots: ExamSlot[] = [];
+  const set = new Set(subjectIds);
+  for (let i = 0; i < dayOrder.length; i++) {
+    const id = dayOrder[i];
+    if (!set.has(id)) continue;
+    const sub = getSubjectById(id);
+    if (sub) {
+      if (slots.length > 0) {
+        slots.push({
+          type: 'break',
+          durationSeconds: BREAK_BETWEEN_SUBJECTS_MINUTES * 60,
+        });
+      }
+      slots.push({
+        type: 'subject',
+        subjectId: id,
+        name: sub.name,
+        durationSeconds: sub.time * 60,
+      });
+    }
+  }
+  return slots;
+}

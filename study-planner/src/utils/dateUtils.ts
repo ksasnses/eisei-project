@@ -1,5 +1,27 @@
-import { getDay, addDays, format, parseISO, differenceInDays } from 'date-fns';
+import {
+  getDay,
+  addDays,
+  format,
+  parseISO,
+  differenceInDays,
+  startOfWeek,
+  addWeeks,
+  subWeeks,
+  isSameDay,
+} from 'date-fns';
 import { ja } from 'date-fns/locale';
+
+/** 週の開始日（月曜）を返す */
+export function getWeekStart(date: Date, weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 1): Date {
+  return startOfWeek(date, { weekStartsOn });
+}
+
+/** 週の開始日から7日分の日付配列 */
+export function getWeekDates(weekStart: Date): Date[] {
+  return [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(weekStart, i));
+}
+
+export { addWeeks, subWeeks, isSameDay };
 
 /** 次の共通テスト本番日（次の1月第3土曜日）を返す */
 export function getDefaultExamDate(): Date {

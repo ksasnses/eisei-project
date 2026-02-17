@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { DailyPlan, StudyTask } from '../types';
+import { useStudentStore } from './studentStore';
+import { generateDailyPlan as generateDailyPlanEngine } from '../utils/scheduleEngine';
 
 interface StudyState {
   dailyPlans: Record<string, DailyPlan>;
@@ -16,10 +18,10 @@ interface StudyState {
   resetStreak: () => void;
   incrementPomodoros: (count: number) => void;
   generateDailyPlan: (date: string) => DailyPlan;
+  resetAll: () => void;
 }
 
-/** Step 5 で実装する計画生成ロジックのプレースホルダー */
-function generateDailyPlanLogic(date: string): DailyPlan {
+function emptyPlan(date: string): DailyPlan {
   return {
     date,
     phase: '基礎期',
@@ -120,10 +122,25 @@ export const useStudyStore = create<StudyState>()(
         set((state) => ({ totalPomodoros: state.totalPomodoros + count })),
 
       generateDailyPlan: (date) => {
-        const plan = generateDailyPlanLogic(date);
+        const profile = useStudentStore.getState().profile;
+        const events = useStudentStore.getState().events;
+        const completedTasks = get().completedTasks;
+        if (!profile) {
+          const plan = emptyPlan(date);
+          get().setDailyPlan(date, plan);
+          return plan;
+        }
+        const plan = generateDailyPlanEngine(
+          profile,
+          events,
+          completedTasks,
+          date
+        );
         get().setDailyPlan(date, plan);
         return plan;
       },
+
+      resetAll: () => set(initialState),
     }),
     { name: 'eisei-study-storage' }
   )
