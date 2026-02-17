@@ -1,0 +1,141 @@
+/**
+ * 共通テスト対応 学習計画ソフト - 型定義
+ * docs/spec.md セクション2・6 に基づく
+ */
+
+/** 科目マスターデータ */
+export interface Subject {
+  id: string;
+  name: string;
+  score: number;
+  time: number;
+  day: 1 | 2;
+  category: SubjectCategory;
+  studyType: StudyType;
+  memorizationRatio: number;
+  thinkingRatio: number;
+  processingSpeedCritical: boolean;
+  dailyPracticeNeeded: boolean;
+  recommendedDailyMin: number;
+  crammingEffective: boolean;
+  tips: string[];
+  note?: string;
+}
+
+export type SubjectCategory =
+  | '地歴公民'
+  | '国語'
+  | '外国語'
+  | '理科'
+  | '数学'
+  | '情報';
+
+export type StudyType = 'thinking' | 'memorization' | 'processing' | 'mixed';
+
+/** 受験テンプレート */
+export interface ExamTemplate {
+  id: string;
+  name: string;
+  requiredSubjects: string[];
+  selectGroups: SelectGroup[];
+  totalScore: number;
+  note: string;
+}
+
+export interface SelectGroup {
+  from: string;
+  count: number;
+  recommended?: string[];
+}
+
+/** 生徒が選択した科目 */
+export interface SelectedSubject {
+  subjectId: string;
+  currentScore: number;
+  targetScore: number;
+  difficulty: 1 | 2 | 3 | 4 | 5;
+  textbooks: string[];
+}
+
+/** 1日の生活スケジュール */
+export interface DailySchedule {
+  wakeUpTime: string;
+  bedTime: string;
+  schoolStart: string;
+  schoolEnd: string;
+  commuteMinutesOneWay: number;
+  mealAndBathMinutes: number;
+  clubDays: number[];
+  clubStartTime: string;
+  clubEndTime: string;
+  freeTimeBufferMinutes: number;
+}
+
+/** 生徒プロフィール */
+export interface StudentProfile {
+  name: string;
+  examType: string;
+  subjects: SelectedSubject[];
+  dailySchedule: DailySchedule;
+  examDate: string;
+}
+
+/** イベント */
+export interface EventDate {
+  id: string;
+  title: string;
+  date: string;
+  type: EventType;
+  durationDays: number;
+  note?: string;
+}
+
+export type EventType =
+  | 'tennis_match'
+  | 'school_event'
+  | 'regular_test'
+  | 'mock_exam'
+  | 'other';
+
+/** 学習タスク */
+export interface StudyTask {
+  id: string;
+  subjectId: string;
+  type: 'new' | 'review' | 'exam_practice' | 'speed_training';
+  content: string;
+  pomodoroType: PomodoroType;
+  pomodoroCount: number;
+  estimatedMinutes: number;
+  reviewSource?: { originalDate: string; reviewNumber: number };
+  completed: boolean;
+  actualMinutes?: number;
+  completedAt?: string;
+}
+
+export type PomodoroType =
+  | 'thinking'
+  | 'memorization'
+  | 'processing'
+  | 'exam_practice';
+
+/** 日次計画 */
+export interface DailyPlan {
+  date: string;
+  phase: PhaseName;
+  isClubDay: boolean;
+  isMatchDay: boolean;
+  isEventDay: boolean;
+  availableMinutes: number;
+  tasks: StudyTask[];
+  completionRate: number;
+}
+
+export type PhaseName = '基礎期' | '実践期' | '直前期';
+
+/** ポモドーロ設定 */
+export interface PomodoroConfig {
+  workMinutes: number;
+  breakMinutes: number;
+  longBreakAfter: number;
+  longBreakMinutes: number;
+}
