@@ -22,22 +22,28 @@ import { getPhaseByDaysLeft } from '../constants/phaseConfig';
 import { getSubjectById } from '../constants/subjects';
 import { daysUntilExam } from '../utils/dateUtils';
 import { getStudyMinutesSummary } from '../utils/scheduleUtils';
+import { determineDayType } from '../utils/scheduleEngine';
+import { getDayTemplate, getSubjectCategory } from '../constants/dayTemplates';
 import type { StudyTask } from '../types';
 
-const TYPE_LABELS: Record<StudyTask['type'], string> = {
-  new: '新規学習',
-  review: '復習',
-  exam_practice: '演習',
-  speed_training: '処理速度',
+const BLOCK_ACCENT: Record<string, string> = {
+  english: 'border-l-blue-500',
+  math: 'border-l-red-500',
+  japanese: 'border-l-green-500',
+  science: 'border-l-purple-500',
+  social: 'border-l-orange-500',
+  info: 'border-l-gray-500',
+  review: 'border-l-amber-500',
 };
 
-const CATEGORY_COLORS: Record<string, string> = {
-  地歴公民: 'bg-amber-100 text-amber-800',
-  国語: 'bg-green-100 text-green-800',
-  外国語: 'bg-blue-100 text-blue-800',
-  理科: 'bg-purple-100 text-purple-800',
-  数学: 'bg-indigo-100 text-indigo-800',
-  情報: 'bg-slate-100 text-slate-800',
+const BLOCK_LABELS: Record<string, string> = {
+  english: '英語',
+  math: '数学',
+  japanese: '国語',
+  science: '理科',
+  social: '社会',
+  info: '情報',
+  review: '復習',
 };
 
 export function DashboardPage() {
@@ -49,7 +55,6 @@ export function DashboardPage() {
   const completedTasks = useStudyStore((s) => s.completedTasks);
   const generateDailyPlan = useStudyStore((s) => s.generateDailyPlan);
   const completeTask = useStudyStore((s) => s.completeTask);
-  const skipTask = useStudyStore((s) => s.skipTask);
 
   const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
   const plan = dailyPlans[today];
@@ -62,6 +67,28 @@ export function DashboardPage() {
   const daysLeft = profile ? daysUntilExam(profile.examDate) : 0;
   const phase = getPhaseByDaysLeft(daysLeft);
   const isClubDay = plan?.isClubDay ?? false;
+
+  const dayType = useMemo(() => {
+    if (!profile) return null;
+    return determineDayType(profile, events, today);
+  }, [profile, events, today]);
+  const dayDescription = dayType ? getDayTemplate(dayType).description : '';
+
+  const reviewTasks = useMemo(() => tasks.filter((t) => t.type === 'review' || t.reviewSource != null), [tasks]);
+  const blockTasks = useMemo(() => tasks.filter((t) => t.type !== 'review' && !t.reviewSource), [tasks]);
+  const tasksByBlock = useMemo(() => {
+    const order: (string | 'unknown')[] = ['english', 'math', 'japanese', 'science', 'social', 'info'];
+    const map = new Map<string, StudyTask[]>();
+    for (const t of blockTasks) {
+      const cat = getSubjectCategory(t.subjectId);
+      const key = cat === 'unknown' ? 'info' : cat;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(t);
+    }
+    return order.filter((k) => map.has(k)).map((k) => ({ category: k, tasks: map.get(k)! }));
+  }, [blockTasks]);
+
+  const isWeekdayClubOnly = dayType === 'weekday_club';
 
   // 設定タブの「1日の勉強可能時間」と同じ計算で表示（一致させる）
   const studyMinutesForToday = useMemo(() => {
@@ -86,6 +113,12 @@ export function DashboardPage() {
   const handleComplete = (taskId: string) => {
     const task = tasks.find((t) => t.id === taskId);
     if (task) completeTask(taskId, task.estimatedMinutes);
+  };
+
+  const handleCompleteBlock = (blockTaskList: StudyTask[]) => {
+    blockTaskList.forEach((t) => {
+      if (!t.completed) completeTask(t.id, t.estimatedMinutes);
+    });
   };
 
   const allCompleted =
@@ -262,6 +295,11 @@ export function DashboardPage() {
             <h2 className="mb-2 text-lg font-semibold text-slate-800">
               今日の学習計画
             </h2>
+            {dayDescription && (
+              <p className="mb-2 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700">
+                {dayDescription}
+              </p>
+            )}
             <p className="mb-4 text-sm text-slate-500">
               {plan != null && (
                 <>
@@ -288,83 +326,125 @@ export function DashboardPage() {
                 </p>
               </div>
             ) : tasks.length > 0 ? (
-              <ul className="space-y-3">
-                {tasks.map((task) => {
-                  const subject = getSubjectById(task.subjectId);
-                  const categoryColor =
-                    subject ? CATEGORY_COLORS[subject.category] ?? 'bg-slate-100 text-slate-800' : 'bg-slate-100 text-slate-800';
-                  return (
-                    <li
-                      key={task.id}
-                      className={`rounded-lg border p-4 ${
-                        task.completed
-                          ? 'border-slate-100 bg-slate-50 opacity-75'
-                          : 'border-slate-200 bg-white'
-                      }`}
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <Link
-                            to={`/subjects/${task.subjectId}`}
-                            className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${categoryColor} hover:opacity-90`}
-                          >
-                            {subject?.name ?? task.subjectId}
-                          </Link>
-                          <p className="mt-2 font-medium text-slate-800">
-                            {task.content}
-                          </p>
-                          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                            <span>
-                              🍅×{task.pomodoroCount} = {task.estimatedMinutes}
-                              分
-                            </span>
-                            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">
-                              {TYPE_LABELS[task.type]}
-                            </span>
-                            {task.reviewSource && (
-                              <span className="text-amber-600">
-                                忘却曲線 {task.reviewSource.reviewNumber}回目復習
-                              </span>
-                            )}
+              <div className="space-y-4">
+                {reviewTasks.length > 0 && (
+                  <div className="rounded-lg border border-slate-200 border-l-4 border-l-amber-500 bg-white p-4">
+                    <h3 className="mb-2 text-sm font-semibold text-slate-800">
+                      🔄 復習タスク（最大{dayType ? getDayTemplate(dayType).maxReviewMinutes : 20}分）
+                    </h3>
+                    <ul className="space-y-2">
+                      {reviewTasks.map((task) => (
+                        <li key={task.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-100 p-2">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={task.completed}
+                              onChange={() => {}}
+                              className="h-4 w-4 rounded border-slate-300"
+                              readOnly
+                            />
+                            <span className="text-sm text-slate-800">{task.content}</span>
+                            <span className="text-xs text-slate-500">（{task.estimatedMinutes}分）</span>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-2">
                           {!task.completed && (
-                            <>
+                            <span className="flex gap-1">
                               <Link
                                 to="/timer"
                                 state={{ task }}
-                                className="rounded-lg bg-blue-500 px-3 py-2 text-sm font-medium text-white"
+                                className="rounded bg-blue-500 px-2 py-1 text-xs font-medium text-white"
                               >
                                 開始
                               </Link>
                               <button
                                 type="button"
                                 onClick={() => handleComplete(task.id)}
-                                className="rounded border border-slate-200 bg-white px-3 py-2 text-sm"
+                                className="rounded border border-slate-200 px-2 py-1 text-xs"
                               >
                                 完了
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => skipTask(task.id)}
-                                className="text-xs text-slate-400 hover:text-slate-600"
-                              >
-                                スキップ
-                              </button>
-                            </>
-                          )}
-                          {task.completed && (
-                            <span className="text-sm text-green-600">
-                              ✓ 完了
                             </span>
                           )}
-                        </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {tasksByBlock.map(({ category, tasks: blockTaskList }) => {
+                  const totalMin = blockTaskList.reduce((s, t) => s + t.estimatedMinutes, 0);
+                  const totalPomo = blockTaskList.reduce((s, t) => s + t.pomodoroCount, 0);
+                  const blockDone = blockTaskList.every((t) => t.completed);
+                  const label = BLOCK_LABELS[category] ?? category;
+                  const accent = BLOCK_ACCENT[category] ?? 'border-l-slate-400';
+                  return (
+                    <div
+                      key={category}
+                      className={`rounded-lg border border-slate-200 border-l-4 bg-white p-4 ${blockDone ? 'bg-green-50/80' : ''} ${accent}`}
+                    >
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="text-sm font-semibold text-slate-800">
+                          {blockDone && '✓ '}
+                          📖 {label}ブロック（{totalMin / 60}h / {totalPomo}ポモドーロ）
+                        </h3>
+                        {!blockDone && blockTaskList.some((t) => !t.completed) && (
+                          <button
+                            type="button"
+                            onClick={() => handleCompleteBlock(blockTaskList)}
+                            className="rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                          >
+                            ブロック完了
+                          </button>
+                        )}
                       </div>
-                    </li>
+                      <hr className="mb-3 border-slate-200" />
+                      <ul className="space-y-2">
+                        {blockTaskList.map((task) => (
+                          <li
+                            key={task.id}
+                            className={`flex flex-wrap items-center justify-between gap-2 rounded p-2 ${task.completed ? 'bg-slate-50 opacity-80' : ''}`}
+                          >
+                            <div className="flex min-w-0 flex-1 items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={task.completed}
+                                onChange={() => {}}
+                                className="h-4 w-4 rounded border-slate-300"
+                                readOnly
+                              />
+                              <span className="font-medium text-slate-800">🍅 {task.content}</span>
+                              <span className="text-xs text-slate-500">（{task.estimatedMinutes}分）</span>
+                            </div>
+                            {!task.completed && (
+                              <span className="flex items-center gap-1">
+                                <Link
+                                  to="/timer"
+                                  state={{ task }}
+                                  className="rounded bg-blue-500 px-3 py-1.5 text-sm font-medium text-white"
+                                >
+                                  開始
+                                </Link>
+                                <button
+                                  type="button"
+                                  onClick={() => handleComplete(task.id)}
+                                  className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-600"
+                                >
+                                  完了
+                                </button>
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   );
                 })}
-              </ul>
+
+                {isWeekdayClubOnly && (
+                  <p className="rounded-lg bg-blue-50 py-3 text-center text-sm text-blue-800">
+                    今日は英語と数学に集中する日です💪
+                  </p>
+                )}
+              </div>
             ) : null}
           </section>
         </main>

@@ -84,6 +84,10 @@ export interface DailySchedule {
   /** 土日・休日の部活 終了 */
   clubWeekendEnd?: string;
   freeTimeBufferMinutes: number;
+  /** 夏休み開始日 ISO形式 "2026-07-20"（空文字なら未設定） */
+  summerVacationStart?: string;
+  /** 夏休み終了日 ISO形式 "2026-08-31"（空文字なら未設定） */
+  summerVacationEnd?: string;
 }
 
 /** 生徒プロフィール */
@@ -171,4 +175,37 @@ export interface MockExamResult {
   scores: Record<string, number>;
   total: number;
   completedAt: string;
+}
+
+/**
+ * 1日のスケジュール内の学習ブロック
+ * 英語1.5h、数学1.5hなどの「ひとまとまり」を表す
+ */
+export interface StudyBlock {
+  subjectCategory: 'english' | 'math' | 'japanese' | 'science' | 'social' | 'info' | 'review';
+  subjectIds: string[];
+  durationMinutes: number;
+  pomodoroCount: number;
+  pomodoroWorkMinutes: number;
+  label: string;
+  order: number;
+}
+
+/** 日種別 */
+export type DayType =
+  | 'weekday_club'
+  | 'weekday_no_club'
+  | 'weekend_holiday'
+  | 'summer_club'
+  | 'summer_no_club'
+  | 'match_day'
+  | 'event_day';
+
+/** 日種別ごとの学習ブロック配置テンプレート */
+export interface DayTemplate {
+  dayType: DayType;
+  blocks: StudyBlock[];
+  totalStudyMinutes: number;
+  maxReviewMinutes: number;
+  description: string;
 }

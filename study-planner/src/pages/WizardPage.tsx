@@ -20,7 +20,7 @@ import {
   daysUntilExam,
 } from '../utils/dateUtils';
 
-const TOTAL_STEPS = 6;
+const TOTAL_STEPS = 7;
 
 type SubjectDetail = {
   currentScore: number;
@@ -42,6 +42,8 @@ const defaultSchedule: DailySchedule = {
   clubWeekendStart: '09:00',
   clubWeekendEnd: '12:00',
   freeTimeBufferMinutes: 30,
+  summerVacationStart: '',
+  summerVacationEnd: '',
 };
 
 const TIME_OPTIONS = (() => {
@@ -142,8 +144,8 @@ export function WizardPage() {
         })()
       );
     if (step === 3) return selectedSubjectIds.length > 0;
-    if (step === 4 || step === 5) return true;
-    if (step === 6) return true;
+    if (step === 4 || step === 5 || step === 6) return true;
+    if (step === 7) return true;
     return false;
   };
 
@@ -960,8 +962,83 @@ export function WizardPage() {
           </div>
         )}
 
-        {/* Step 6 */}
+        {/* Step 6: 夏休みの期間 */}
         {step === 6 && (
+          <div>
+            <h2 className="mb-2 text-xl font-semibold text-slate-800">
+              夏休みの期間
+            </h2>
+            <p className="mb-6 text-sm text-slate-500">
+              夏休み中は学校がないため、勉強時間が大幅に増えます。正確な期間を設定してください。
+            </p>
+            <div className="mb-6 grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm text-slate-600">夏休み開始日</label>
+                <input
+                  type="date"
+                  value={schedule.summerVacationStart || '2026-07-20'}
+                  onChange={(e) =>
+                    setSchedule((s) => ({ ...s, summerVacationStart: e.target.value || '' }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-600">夏休み終了日</label>
+                <input
+                  type="date"
+                  value={schedule.summerVacationEnd || '2026-08-31'}
+                  onChange={(e) =>
+                    setSchedule((s) => ({ ...s, summerVacationEnd: e.target.value || '' }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                />
+              </div>
+            </div>
+            <p className="mb-3 text-sm font-medium text-slate-700">夏休み中のスケジュール目安</p>
+            {/* 部活あり日: 英語90+数学90+国語90+理科60+社会60 = 390分 = 6.5h */}
+            <div className="mb-4">
+              <div className="mb-1 text-xs text-slate-500">部活あり日：約6.5時間</div>
+              <div className="flex h-8 overflow-hidden rounded-lg border border-slate-200">
+                <div className="bg-blue-500" style={{ width: '23%' }} title="英語 1.5h" />
+                <div className="bg-red-500" style={{ width: '23%' }} title="数学 1.5h" />
+                <div className="bg-green-500" style={{ width: '23%' }} title="国語 1.5h" />
+                <div className="bg-purple-500" style={{ width: '15%' }} title="理科 1h" />
+                <div className="bg-orange-500" style={{ width: '15%' }} title="社会 1h" />
+              </div>
+              <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-600">
+                <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 rounded bg-blue-500" />英語1.5h</span>
+                <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 rounded bg-red-500" />数学1.5h</span>
+                <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 rounded bg-green-500" />国語1.5h</span>
+                <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 rounded bg-purple-500" />理科1h</span>
+                <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 rounded bg-orange-500" />社会1h</span>
+              </div>
+            </div>
+            {/* 部活なし日: 英語90+数学90+国語90+理科90+社会90+情報30 = 480分 = 8h */}
+            <div>
+              <div className="mb-1 text-xs text-slate-500">部活なし日：約8時間</div>
+              <div className="flex h-8 overflow-hidden rounded-lg border border-slate-200">
+                <div className="bg-blue-500" style={{ width: '18.75%' }} title="英語 1.5h" />
+                <div className="bg-red-500" style={{ width: '18.75%' }} title="数学 1.5h" />
+                <div className="bg-green-500" style={{ width: '18.75%' }} title="国語 1.5h" />
+                <div className="bg-purple-500" style={{ width: '18.75%' }} title="理科 1.5h" />
+                <div className="bg-orange-500" style={{ width: '18.75%' }} title="社会 1.5h" />
+                <div className="bg-gray-500" style={{ width: '6.25%' }} title="情報 0.5h" />
+              </div>
+              <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-600">
+                <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 rounded bg-blue-500" />英語1.5h</span>
+                <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 rounded bg-red-500" />数学1.5h</span>
+                <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 rounded bg-green-500" />国語1.5h</span>
+                <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 rounded bg-purple-500" />理科1.5h</span>
+                <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 rounded bg-orange-500" />社会1.5h</span>
+                <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 rounded bg-gray-500" />情報0.5h</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 7: 試験日の設定 */}
+        {step === 7 && (
           <div>
             <h2 className="mb-2 text-xl font-semibold text-slate-800">
               試験日の設定

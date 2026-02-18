@@ -17,6 +17,20 @@ export interface StudyMinutesSummary {
   withClubWeekday: number;
   /** 部活のある日（土日・休日） */
   withClubWeekend: number;
+  /** 夏休み中・部活あり日（学校・通学なし、部活のみ引く） */
+  summerClub: number;
+  /** 夏休み中・部活なし日（学校・通学なし） */
+  summerNoClub: number;
+}
+
+/**
+ * 指定日が夏休み期間内かどうか
+ */
+export function isSummerVacation(schedule: DailySchedule, dateStr: string): boolean {
+  const start = schedule.summerVacationStart?.trim() ?? '';
+  const end = schedule.summerVacationEnd?.trim() ?? '';
+  if (!start || !end) return false;
+  return dateStr >= start && dateStr <= end;
 }
 
 /**
@@ -57,17 +71,24 @@ export function getStudyMinutesSummary(schedule: DailySchedule): StudyMinutesSum
     (clubEndW < clubStartW ? 24 * 60 : 0) + clubEndW - clubStartW;
   const withClubWeekend = Math.max(0, noClubWeekend - clubMinutesWeekend);
 
+  // 夏休み：学校・通学なし（土日と同じベース）、部活ありなら部活時間を引く
+  const summerBase = noClubWeekend;
+  const summerNoClub = summerBase;
+  const summerClub = Math.max(0, summerBase - clubMinutesWeekend);
+
   return {
     noClubWeekday,
     noClubWeekend,
     withClubWeekday,
     withClubWeekend,
+    summerClub,
+    summerNoClub,
   };
 }
 
 /**
- * 指定日の「種類」（平日/土日・部活有無）に応じた勉強可能時間（分）。
- * 設定・ホーム表示と完全に同一の値にするために使用する。
+ * 指定日の「種類」（平日/土日・夏休み・部活有無）に応じた勉強可能時間（分）。
+ * 夏休み期間中は学校・通学を引かず、部活がある日のみ部活時間を引く。
  */
 export function getAvailableMinutesForDate(
   schedule: DailySchedule,
@@ -77,6 +98,10 @@ export function getAvailableMinutesForDate(
   const dayOfWeek = getDay(parseISO(targetDate));
   const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
   const clubDay = schedule.clubDays.includes(dayOfWeek);
+
+  if (isSummerVacation(schedule, targetDate)) {
+    return clubDay ? summary.summerClub : summary.summerNoClub;
+  }
   if (clubDay && isWeekend) return summary.withClubWeekend;
   if (clubDay) return summary.withClubWeekday;
   if (isWeekend) return summary.noClubWeekend;

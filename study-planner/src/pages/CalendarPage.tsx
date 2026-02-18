@@ -14,7 +14,11 @@ import {
   isSameDay,
   formatDateForInput,
 } from '../utils/dateUtils';
+import { determineDayType } from '../utils/scheduleEngine';
+import { getAdjustedTemplate } from '../constants/dayTemplates';
+import { isSummerVacation } from '../utils/scheduleUtils';
 import type { EventDate, EventType, StudyTask } from '../types';
+import type { DayType } from '../types';
 
 const WEEKDAY_LABELS = ['月', '火', '水', '木', '金', '土', '日'];
 
@@ -26,7 +30,18 @@ const EVENT_TYPE_LABELS: Record<EventType, string> = {
   other: 'その他',
 };
 
-/** 科目カテゴリごとのブロック色（背景） */
+/** 科目カテゴリごとのブロック色（カレンダー用: 英語=青, 数学=赤, 国語=緑, 理科=紫, 社会=オレンジ, 情報=グレー） */
+const SUBJECT_CATEGORY_BG: Record<string, string> = {
+  english: 'bg-blue-500',
+  math: 'bg-red-500',
+  japanese: 'bg-green-500',
+  science: 'bg-purple-500',
+  social: 'bg-orange-500',
+  info: 'bg-gray-500',
+  review: 'bg-amber-400',
+};
+
+/** 従来の科目カテゴリ（タスク表示用） */
 const CATEGORY_BG: Record<string, string> = {
   地歴公民: 'bg-amber-400',
   国語: 'bg-green-500',
@@ -34,6 +49,17 @@ const CATEGORY_BG: Record<string, string> = {
   理科: 'bg-purple-500',
   数学: 'bg-indigo-500',
   情報: 'bg-slate-500',
+};
+
+/** 日種別アイコン */
+const DAY_TYPE_ICON: Record<DayType, string> = {
+  weekday_club: '🎾',
+  weekday_no_club: '📚',
+  weekend_holiday: '📅',
+  summer_club: '🎾',
+  summer_no_club: '🌻',
+  match_day: '🏆',
+  event_day: '📅',
 };
 
 /** 指定日のイベント一覧（その日に含まれるもの） */
@@ -211,21 +237,29 @@ export function CalendarPage() {
             const dateStr = format(d, 'yyyy-MM-dd');
             const plan = dailyPlans[dateStr];
             const dayEvents = getEventsOnDate(events, dateStr);
-            const isClubDay = plan?.isClubDay ?? false;
+            const dayType = profile
+              ? determineDayType(profile, events, dateStr)
+              : 'weekday_no_club';
+            const template = profile
+              ? getAdjustedTemplate(dayType, profile.subjects.map((s) => s.subjectId)).template
+              : null;
+            const isSummer = profile
+              ? isSummerVacation(profile.dailySchedule, dateStr)
+              : false;
             const availableHours =
               plan != null
                 ? (plan.availableMinutes / 60).toFixed(1)
                 : '—';
-            const totalMinutes =
-              plan?.tasks.reduce((sum, t) => sum + t.estimatedMinutes, 0) ?? 0;
             const isToday = isSameDay(d, today);
+            const studyBlocks = template?.blocks.filter((b) => b.subjectCategory !== 'review') ?? [];
+            const totalBlockMinutes = studyBlocks.reduce((s, b) => s + b.durationMinutes, 0);
 
             return (
               <div
                 key={dateStr}
-                className={`flex flex-col rounded-xl border bg-white p-3 shadow-sm ${
-                  isToday ? 'ring-2 ring-indigo-400' : 'border-slate-200'
-                }`}
+                className={`flex flex-col rounded-xl border p-3 shadow-sm ${
+                  isSummer ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'
+                } ${isToday ? 'ring-2 ring-indigo-400' : ''}`}
               >
                 <div className="mb-2 border-b border-slate-100 pb-2">
                   <div className="text-lg font-bold text-slate-800">
@@ -234,12 +268,10 @@ export function CalendarPage() {
                   <div className="text-xs text-slate-500">
                     {WEEKDAY_LABELS[(d.getDay() + 6) % 7]}
                   </div>
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {isClubDay && (
-                      <span className="inline-flex items-center text-amber-600" title="部活">
-                        🎾
-                      </span>
-                    )}
+                  <div className="mt-1 flex flex-wrap items-center gap-1">
+                    <span className="text-base" title={dayType}>
+                      {DAY_TYPE_ICON[dayType]}
+                    </span>
                     {dayEvents.map((ev) => (
                       <span
                         key={ev.id}
@@ -260,26 +292,23 @@ export function CalendarPage() {
                   勉強可能 {availableHours}h
                 </div>
 
-                {/* 科目ブロック（高さは時間に比例、合計約140px） */}
+                {/* テンプレートの科目ブロックを色分け表示（高さは時間に比例） */}
                 <div className="mt-2 h-[140px] space-y-1 overflow-y-auto">
-                  {plan?.tasks && plan.tasks.length > 0 ? (
+                  {studyBlocks.length > 0 ? (
                     (() => {
-                      const total = totalMinutes || 1;
+                      const total = totalBlockMinutes || 1;
                       const baseH = 136;
-                      return plan.tasks.map((task) => {
-                        const subject = getSubjectById(task.subjectId);
-                        const name = subject?.name ?? task.subjectId;
-                        const shortName =
-                          name.length > 4 ? name.replace(/・.*$/, '').slice(0, 4) : name;
-                        const h = Math.max(28, (task.estimatedMinutes / total) * baseH);
+                      return studyBlocks.map((block, idx) => {
+                        const h = Math.max(20, (block.durationMinutes / total) * baseH);
+                        const bg = SUBJECT_CATEGORY_BG[block.subjectCategory] ?? 'bg-gray-400';
                         return (
                           <div
-                            key={task.id}
-                            className={`flex items-center rounded px-2 py-1 text-xs font-medium text-white ${getSubjectBlockColor(task)}`}
+                            key={`${block.subjectCategory}-${block.order}-${idx}`}
+                            className={`rounded px-1.5 py-0.5 text-[10px] font-medium text-white ${bg}`}
                             style={{ minHeight: h }}
-                            title={`${name} ${task.estimatedMinutes}分`}
+                            title={`${block.label ?? block.subjectCategory} ${block.durationMinutes}分`}
                           >
-                            {shortName} {task.estimatedMinutes}分
+                            {block.label?.replace(/\s*\d+\.?\d*h?\s*$/, '') ?? block.subjectCategory}
                           </div>
                         );
                       });

@@ -1,21 +1,28 @@
 /**
  * 1日の学習計画を自動生成するエンジン
  * docs/spec.md セクション3・4
+ * ブロック方式: dayTemplates + determineDayType + blockToTasks
  */
 
-import { parseISO, getDay } from 'date-fns';
+import { parseISO, getDay, differenceInCalendarDays } from 'date-fns';
 import type {
   StudentProfile,
   EventDate,
   StudyTask,
   DailyPlan,
+  SelectedSubject,
+  StudyBlock,
 } from '../types';
+import type { DayType } from '../types';
+import type { PhaseName } from '../types';
 import { getSubjectById } from '../constants/subjects';
 import { getPomodoroConfig } from '../constants/pomodoroConfig';
 import { detectPhase } from './phaseDetector';
-import { allocateTime, type SubjectTimeAllocation } from './timeAllocation';
+import { type SubjectTimeAllocation } from './timeAllocation';
 import { generateReviewTasks } from './forgettingCurve';
 import { getAvailableMinutesFromSchedule } from './scheduleUtils';
+import { getAdjustedTemplate } from '../constants/dayTemplates';
+import type { DayTemplate } from '../types';
 
 const MIN_ENGLISH_MATH_MINUTES = 15;
 
@@ -28,6 +35,301 @@ function isDateInRange(dateStr: string, event: EventDate): boolean {
   end.setDate(end.getDate() + event.durationDays);
   end.setHours(0, 0, 0, 0);
   return d >= start && d <= end;
+}
+
+/**
+ * その日の日種別を判定する
+ */
+export function determineDayType(
+  profile: StudentProfile,
+  events: EventDate[],
+  targetDate: string
+): DayType {
+  const schedule = profile.dailySchedule;
+
+  const isMatchDay = events.some(
+    (e) => e.type === 'tennis_match' && isDateInRange(targetDate, e)
+  );
+  if (isMatchDay) return 'match_day';
+
+  const isEventDay = events.some(
+    (e) => (e.type === 'school_event' || e.type === 'other') && isDateInRange(targetDate, e)
+  );
+  if (isEventDay) return 'event_day';
+
+  const start = schedule.summerVacationStart?.trim() ?? '';
+  const end = schedule.summerVacationEnd?.trim() ?? '';
+  if (start && end && targetDate >= start && targetDate <= end) {
+    const dayOfWeek = getDay(parseISO(targetDate));
+    return schedule.clubDays.includes(dayOfWeek) ? 'summer_club' : 'summer_no_club';
+  }
+
+  const dayOfWeek = getDay(parseISO(targetDate));
+  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+  if (isWeekend) return 'weekend_holiday';
+
+  if (schedule.clubDays.includes(dayOfWeek)) return 'weekday_club';
+  return 'weekday_no_club';
+}
+
+/**
+ * 復習タスクを上限分に収める
+ */
+function capReviewTasks(
+  reviewTasks: StudyTask[],
+  maxReviewMinutes: number
+): StudyTask[] {
+  const total = reviewTasks.reduce((s, t) => s + t.estimatedMinutes, 0);
+  if (total <= maxReviewMinutes) return reviewTasks;
+  const workMin = getPomodoroConfig('thinking').workMinutes;
+  let remaining = maxReviewMinutes;
+  const result: StudyTask[] = [];
+  for (const t of reviewTasks) {
+    if (remaining <= 0) break;
+    const take = Math.min(t.estimatedMinutes, remaining);
+    const count = Math.max(0, Math.floor(take / workMin)) || (take > 0 ? 1 : 0);
+    const estimatedMinutes = count * workMin;
+    if (estimatedMinutes <= 0) continue;
+    remaining -= estimatedMinutes;
+    result.push({ ...t, pomodoroCount: count, estimatedMinutes });
+  }
+  return result;
+}
+
+function toPomodoroType(
+  studyType: string,
+  memorizationRatio: number
+): StudyTask['pomodoroType'] {
+  if (studyType === 'memorization') return 'memorization';
+  if (studyType === 'processing') return 'processing';
+  if (studyType === 'mixed') return memorizationRatio >= 0.5 ? 'memorization' : 'thinking';
+  return 'thinking';
+}
+
+/**
+ * StudyBlock を具体的な StudyTask の配列に変換する
+ */
+function blockToTasks(
+  block: StudyBlock,
+  selectedSubjects: SelectedSubject[],
+  phase: PhaseName,
+  targetDate: string,
+  startIndex: number
+): StudyTask[] {
+  const tasks: StudyTask[] = [];
+  const workMin = block.pomodoroWorkMinutes;
+  let index = startIndex;
+
+  const selectedIds = (block.subjectIds?.length ? block.subjectIds : []).filter((id) =>
+    selectedSubjects.some((s) => s.subjectId === id)
+  );
+  const getSub = (id: string) => getSubjectById(id);
+  const getPomoType = (id: string): StudyTask['pomodoroType'] => {
+    const sub = getSub(id);
+    return toPomodoroType(sub?.studyType ?? 'thinking', sub?.memorizationRatio ?? 0.5);
+  };
+
+  if (block.subjectCategory === 'english') {
+    const hasR = selectedIds.includes('eng_r');
+    const hasL = selectedIds.includes('eng_l');
+    if (!hasR && !hasL) return [];
+    const contents =
+      phase === '基礎期'
+        ? ['英単語暗記', '英文法・精読', 'リスニング基礎練習']
+        : phase === '実践期'
+          ? ['共テ形式 語彙問題', '共テ形式 長文読解', '共テ形式 リスニング演習']
+          : ['過去問演習（リーディング）', '速読＋時間配分練習', '過去問演習（リスニング）'];
+    const subjectIds =
+      hasR && hasL
+        ? ['eng_r', 'eng_l', 'eng_l']
+        : hasR
+          ? ['eng_r', 'eng_r', 'eng_r']
+          : hasL
+            ? ['eng_l', 'eng_l', 'eng_l']
+            : [];
+    for (let i = 0; i < block.pomodoroCount && i < contents.length; i++) {
+      const subjectId = subjectIds[i] ?? subjectIds[0] ?? 'eng_r';
+      tasks.push({
+        id: `${subjectId}_${targetDate}_${index++}`,
+        subjectId,
+        type: 'new',
+        content: contents[i] ?? '英語 学習',
+        pomodoroType: getPomoType(subjectId),
+        pomodoroCount: 1,
+        estimatedMinutes: workMin,
+        completed: false,
+      });
+    }
+    return tasks;
+  }
+
+  if (block.subjectCategory === 'math') {
+    const has1a = selectedIds.includes('math1a');
+    const has2bc = selectedIds.includes('math2bc');
+    const dayNum = differenceInCalendarDays(parseISO(targetDate), parseISO('2000-01-01'));
+    const isOdd = dayNum % 2 === 1;
+    const contents =
+      phase === '基礎期'
+        ? ['基本問題演習', '基本問題演習', '基本問題演習']
+        : phase === '実践期'
+          ? ['共テ形式演習（時間を測る）', '共テ形式演習（時間を測る）', '共テ形式演習（時間を測る）']
+          : ['過去問演習', '過去問演習', '過去問演習'];
+    let subIds: string[];
+    if (has1a && has2bc) {
+      subIds = isOdd
+        ? ['math1a', 'math1a', 'math2bc']
+        : ['math1a', 'math2bc', 'math2bc'];
+    } else if (has1a) {
+      subIds = ['math1a', 'math1a', 'math1a'];
+    } else if (has2bc) {
+      subIds = ['math2bc', 'math2bc', 'math2bc'];
+    } else {
+      subIds = [];
+    }
+    for (let i = 0; i < block.pomodoroCount && i < subIds.length; i++) {
+      const subjectId = subIds[i] ?? subIds[0];
+      if (!subjectId) break;
+      tasks.push({
+        id: `${subjectId}_${targetDate}_${index++}`,
+        subjectId,
+        type: 'new',
+        content: contents[i] ?? '数学 学習',
+        pomodoroType: getPomoType(subjectId),
+        pomodoroCount: 1,
+        estimatedMinutes: workMin,
+        completed: false,
+      });
+    }
+    return tasks;
+  }
+
+  if (block.subjectCategory === 'japanese') {
+    const contents =
+      phase === '基礎期'
+        ? ['現代文 読解基礎', '古文単語・文法', '漢文 句法暗記']
+        : phase === '実践期'
+          ? ['共テ形式 現代文演習', '共テ形式 古文演習', '共テ形式 漢文演習']
+          : ['過去問 現代文', '過去問 古文', '過去問 漢文'];
+    const subjectId = selectedIds.includes('japanese') ? 'japanese' : null;
+    if (!subjectId) return tasks;
+    for (let i = 0; i < block.pomodoroCount; i++) {
+      tasks.push({
+        id: `${subjectId}_${targetDate}_${index++}`,
+        subjectId,
+        type: 'new',
+        content: contents[i] ?? '国語 学習',
+        pomodoroType: getPomoType(subjectId),
+        pomodoroCount: 1,
+        estimatedMinutes: workMin,
+        completed: false,
+      });
+    }
+    return tasks;
+  }
+
+  if (block.subjectCategory === 'science') {
+    const ids = selectedIds.length > 0 ? selectedIds : block.subjectIds?.length ? block.subjectIds : [];
+    if (ids.length === 0) return tasks;
+    const dayNum = differenceInCalendarDays(parseISO(targetDate), parseISO('2000-01-01'));
+    const contents =
+      phase === '基礎期'
+        ? ['基本問題演習', '基本問題演習']
+        : phase === '実践期'
+          ? ['共テ形式演習', '共テ形式演習']
+          : ['過去問演習', '過去問演習'];
+    for (let i = 0; i < block.pomodoroCount; i++) {
+      const subjectId = ids[(dayNum + i) % ids.length]!;
+      tasks.push({
+        id: `${subjectId}_${targetDate}_${index++}`,
+        subjectId,
+        type: 'new',
+        content: contents[i] ?? '理科 学習',
+        pomodoroType: getPomoType(subjectId),
+        pomodoroCount: 1,
+        estimatedMinutes: workMin,
+        completed: false,
+      });
+    }
+    return tasks;
+  }
+
+  if (block.subjectCategory === 'social') {
+    const ids = selectedIds.length > 0 ? selectedIds : block.subjectIds?.length ? block.subjectIds : [];
+    if (ids.length === 0) return tasks;
+    const dayNum = differenceInCalendarDays(parseISO(targetDate), parseISO('2000-01-01'));
+    const contents =
+      phase === '基礎期'
+        ? ['教科書確認＋一問一答', '教科書確認＋一問一答']
+        : phase === '実践期'
+          ? ['共テ形式演習', '共テ形式演習']
+          : ['過去問＋暗記最終確認', '過去問＋暗記最終確認'];
+    for (let i = 0; i < block.pomodoroCount; i++) {
+      const subjectId = ids[(dayNum + i) % ids.length]!;
+      tasks.push({
+        id: `${subjectId}_${targetDate}_${index++}`,
+        subjectId,
+        type: 'new',
+        content: contents[i] ?? '社会 学習',
+        pomodoroType: getPomoType(subjectId),
+        pomodoroCount: 1,
+        estimatedMinutes: workMin,
+        completed: false,
+      });
+    }
+    return tasks;
+  }
+
+  if (block.subjectCategory === 'info') {
+    const subjectId = selectedIds.includes('info1') ? 'info1' : block.subjectIds?.[0];
+    if (!subjectId) return tasks;
+    const content =
+      phase === '基礎期'
+        ? '基礎知識（2進数、論理回路等）'
+        : phase === '実践期'
+          ? 'プログラミング問題演習'
+          : '予想問題演習';
+    for (let i = 0; i < block.pomodoroCount; i++) {
+      tasks.push({
+        id: `${subjectId}_${targetDate}_${index++}`,
+        subjectId,
+        type: 'new',
+        content,
+        pomodoroType: getPomoType(subjectId),
+        pomodoroCount: 1,
+        estimatedMinutes: workMin,
+        completed: false,
+      });
+    }
+    return tasks;
+  }
+
+  if (block.subjectCategory === 'review') {
+    const memorizationIds = selectedSubjects
+      .filter((s) => {
+        const sub = getSub(s.subjectId);
+        return sub && (sub.memorizationRatio >= 0.5 || sub.studyType === 'memorization');
+      })
+      .map((s) => s.subjectId);
+    const reviewContents = ['英単語確認', '古文単語確認', '社会 一問一答'];
+    for (let i = 0; i < block.pomodoroCount; i++) {
+      const subjectId = memorizationIds[i % memorizationIds.length] ?? memorizationIds[0];
+      if (!subjectId) break;
+      const content = reviewContents[i % reviewContents.length] ?? '暗記確認';
+      tasks.push({
+        id: `${subjectId}_${targetDate}_${index++}`,
+        subjectId,
+        type: 'review',
+        content,
+        pomodoroType: 'memorization',
+        pomodoroCount: 1,
+        estimatedMinutes: workMin,
+        completed: false,
+      });
+    }
+    return tasks;
+  }
+
+  return tasks;
 }
 
 /**
@@ -224,8 +526,77 @@ function ensureDailyPractice(
   return [...tasks, ...toAdd];
 }
 
+/** 削減優先順位（小さいほど先に削る）: 情報→社会→理科→国語→数学→英語 */
+const REDUCE_PRIORITY: Record<string, number> = {
+  info: 0,
+  social: 1,
+  science: 2,
+  japanese: 3,
+  math: 4,
+  english: 5,
+  review: 99,
+};
+
 /**
- * 1日の学習計画を生成する
+ * 実際の利用可能時間がテンプレート合計より少ない場合、
+ * ブロックを後ろから削減（情報→社会→理科→国語→英語・数学は最低60分まで）
+ */
+function reduceTemplateToFit(
+  template: DayTemplate,
+  actualAvailableMinutes: number
+): DayTemplate {
+  const reviewReserved = template.maxReviewMinutes;
+  const actualForBlocks = Math.max(0, actualAvailableMinutes - reviewReserved);
+  if (template.totalStudyMinutes <= actualForBlocks) {
+    return template;
+  }
+
+  const blocks = template.blocks
+    .filter((b) => b.subjectCategory !== 'review')
+    .map((b) => ({ ...b, durationMinutes: b.durationMinutes, pomodoroCount: b.pomodoroCount }));
+  const sorted = [...blocks].sort((a, b) => {
+    if (b.order !== a.order) return b.order - a.order;
+    return (REDUCE_PRIORITY[a.subjectCategory] ?? 99) - (REDUCE_PRIORITY[b.subjectCategory] ?? 99);
+  });
+
+  let total = blocks.reduce((s, b) => s + b.durationMinutes, 0);
+  const minPomoForEnglishMath = 2;
+  const workMin = 30;
+
+  for (const block of sorted) {
+    if (total <= actualForBlocks) break;
+    const current = blocks.find((b) => b.order === block.order && b.subjectCategory === block.subjectCategory);
+    if (!current || current.durationMinutes <= 0) continue;
+    const isEnglishOrMath = current.subjectCategory === 'english' || current.subjectCategory === 'math';
+    const minPomo = isEnglishOrMath ? minPomoForEnglishMath : 0;
+    if (current.pomodoroCount <= minPomo) continue;
+
+    const removeEntire = total - current.durationMinutes <= actualForBlocks;
+    if (removeEntire && minPomo === 0) {
+      total -= current.durationMinutes;
+      current.durationMinutes = 0;
+      current.pomodoroCount = 0;
+      continue;
+    }
+    const newPomo = Math.max(minPomo, current.pomodoroCount - 1);
+    const newDuration = newPomo * (current.pomodoroWorkMinutes || workMin);
+    total -= current.durationMinutes - newDuration;
+    current.durationMinutes = newDuration;
+    current.pomodoroCount = newPomo;
+  }
+
+  const kept = blocks.filter((b) => b.durationMinutes > 0);
+  const newTotal = kept.reduce((s, b) => s + b.durationMinutes, 0);
+  return {
+    ...template,
+    blocks: kept,
+    totalStudyMinutes: newTotal,
+  };
+}
+
+/**
+ * 1日の学習計画を生成する（ブロック方式）
+ * 実際の利用可能時間とテンプレートを比較し、必要ならブロックを削減する。
  */
 export function generateDailyPlan(
   profile: StudentProfile,
@@ -233,48 +604,46 @@ export function generateDailyPlan(
   completedTasks: StudyTask[],
   targetDate: string
 ): DailyPlan {
+  const dayType = determineDayType(profile, events, targetDate);
   const phase = detectPhase(profile.examDate, targetDate);
-  const {
-    availableMinutes,
-    isClubDay,
-    isMatchDay,
-    isEventDay,
-  } = getAvailableMinutes(profile, events, targetDate);
+  const selectedIds = profile.subjects.map((s) => s.subjectId);
+  let { template } = getAdjustedTemplate(dayType, selectedIds);
+
+  const actualAvailableMinutes = getAvailableMinutesFromSchedule(profile, events, targetDate);
+  template = reduceTemplateToFit(template, actualAvailableMinutes);
 
   const reviewTasks = generateReviewTasks(completedTasks, targetDate);
-  const reviewMinutes = reviewTasks.reduce((s, t) => s + t.estimatedMinutes, 0);
-  const remainingMinutes = Math.max(0, availableMinutes - reviewMinutes);
+  const cappedReviewTasks = capReviewTasks(reviewTasks, template.maxReviewMinutes);
 
-  let newTasks: StudyTask[] = [];
-  if (remainingMinutes > 0 && profile.subjects.length > 0) {
-    const allocations = allocateTime(
-      profile.subjects,
-      remainingMinutes,
-      phase
-    );
-    newTasks = allocationToTasks(
-      allocations,
-      profile,
-      targetDate,
-      reviewTasks.length + 1
-    );
+  const blockTasks: StudyTask[] = [];
+  let taskIndex = 0;
+  for (const block of template.blocks) {
+    if (block.subjectCategory === 'review') continue;
+    const tasks = blockToTasks(block, profile.subjects, phase.name, targetDate, taskIndex);
+    blockTasks.push(...tasks);
+    taskIndex += tasks.length;
   }
 
-  let allTasks = [...reviewTasks, ...newTasks];
-  allTasks = ensureDailyPractice(allTasks, profile, targetDate, 1000);
-  allTasks = orderTasks(allTasks);
-  allTasks = capTasksToAvailable(allTasks, availableMinutes);
-
-  const completionRate = 0;
+  const allTasks = [...cappedReviewTasks, ...blockTasks];
+  const totalAvailable = template.totalStudyMinutes + template.maxReviewMinutes;
+  const finalTasks = capTasksToAvailable(allTasks, totalAvailable);
 
   return {
     date: targetDate,
     phase: phase.name,
-    isClubDay,
-    isMatchDay,
-    isEventDay,
-    availableMinutes,
-    tasks: allTasks,
-    completionRate,
+    isClubDay: dayType === 'weekday_club' || dayType === 'summer_club',
+    isMatchDay: dayType === 'match_day',
+    isEventDay: dayType === 'event_day',
+    availableMinutes: actualAvailableMinutes,
+    tasks: finalTasks,
+    completionRate: 0,
   };
 }
+
+/** 将来のブロック内配分等で利用するため残している既存関数（allocateTime は timeAllocation.ts にあり） */
+export {
+  getAvailableMinutes,
+  allocationToTasks,
+  orderTasks,
+  ensureDailyPractice,
+};

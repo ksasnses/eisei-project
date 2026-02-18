@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart,
@@ -16,6 +16,7 @@ import { getSubjectById } from '../constants/subjects';
 import { EXAM_TEMPLATES } from '../constants/examTemplates';
 import { formatDateForInput } from '../utils/dateUtils';
 import { getStudyMinutesSummary } from '../utils/scheduleUtils';
+import { getDayTemplate } from '../constants/dayTemplates';
 
 const TIME_OPTIONS = (() => {
   const opts: string[] = [];
@@ -49,6 +50,12 @@ export function SettingsPage() {
 
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showImportError, setShowImportError] = useState<string | null>(null);
+  const [scheduleToast, setScheduleToast] = useState(false);
+  useEffect(() => {
+    if (!scheduleToast) return;
+    const t = setTimeout(() => setScheduleToast(false), 3000);
+    return () => clearTimeout(t);
+  }, [scheduleToast]);
 
   const totalCurrent = useMemo(
     () =>
@@ -566,6 +573,43 @@ export function SettingsPage() {
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
             />
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-slate-600">夏休み開始日</label>
+              <input
+                type="date"
+                value={schedule.summerVacationStart ?? ''}
+                onChange={(e) => {
+                  updateProfile({
+                    dailySchedule: { ...schedule, summerVacationStart: e.target.value || '' },
+                  });
+                  setScheduleToast(true);
+                  generateDailyPlan(formatDateForInput(new Date()));
+                }}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-600">夏休み終了日</label>
+              <input
+                type="date"
+                value={schedule.summerVacationEnd ?? ''}
+                onChange={(e) => {
+                  updateProfile({
+                    dailySchedule: { ...schedule, summerVacationEnd: e.target.value || '' },
+                  });
+                  setScheduleToast(true);
+                  generateDailyPlan(formatDateForInput(new Date()));
+                }}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              />
+            </div>
+          </div>
+          {scheduleToast && (
+            <div className="rounded-lg bg-blue-100 px-4 py-2 text-sm text-blue-800">
+              スケジュールが再生成されます
+            </div>
+          )}
         </div>
       </section>
 
@@ -687,24 +731,48 @@ export function SettingsPage() {
           <p className="mb-3 text-sm font-medium text-slate-700">
             1日の勉強可能時間（上記スケジュールから自動計算）
           </p>
-          <ul className="space-y-2 text-sm">
-            <li className="flex justify-between text-slate-700">
-              <span>部活のない日（平日）</span>
-              <span className="font-medium tabular-nums">{formatStudyTime(studyMinutes.noClubWeekday)}</span>
-            </li>
-            <li className="flex justify-between text-slate-700">
-              <span>部活のない日（土日・休日）</span>
-              <span className="font-medium tabular-nums">{formatStudyTime(studyMinutes.noClubWeekend)}</span>
-            </li>
-            <li className="flex justify-between text-slate-700">
-              <span>部活のある日（平日）</span>
-              <span className="font-medium tabular-nums">{formatStudyTime(studyMinutes.withClubWeekday)}</span>
-            </li>
-            <li className="flex justify-between text-slate-700">
-              <span>部活のある日（土日・休日）</span>
-              <span className="font-medium tabular-nums">{formatStudyTime(studyMinutes.withClubWeekend)}</span>
-            </li>
-          </ul>
+          {(() => {
+            const badgeByCat: Record<string, { label: string; cn: string }> = {
+              english: { label: '英語', cn: 'bg-blue-100 text-blue-800' },
+              math: { label: '数学', cn: 'bg-red-100 text-red-800' },
+              japanese: { label: '国語', cn: 'bg-green-100 text-green-800' },
+              science: { label: '理科', cn: 'bg-purple-100 text-purple-800' },
+              social: { label: '社会', cn: 'bg-orange-100 text-orange-800' },
+              info: { label: '情報', cn: 'bg-gray-100 text-gray-800' },
+            };
+            const rows: { label: string; minutes: number; templateKey: 'weekday_club' | 'weekday_no_club' | 'weekend_holiday' | 'summer_club' | 'summer_no_club' }[] = [
+              { label: '部活のある日（平日）', minutes: studyMinutes.withClubWeekday, templateKey: 'weekday_club' },
+              { label: '部活のない日（平日）', minutes: studyMinutes.noClubWeekday, templateKey: 'weekday_no_club' },
+              { label: '部活のない日（土日・休日）', minutes: studyMinutes.noClubWeekend, templateKey: 'weekend_holiday' },
+              { label: '部活のある日（土日・休日）', minutes: studyMinutes.withClubWeekend, templateKey: 'weekend_holiday' },
+              { label: '夏休み 部活あり日', minutes: studyMinutes.summerClub, templateKey: 'summer_club' },
+              { label: '夏休み 部活なし日', minutes: studyMinutes.summerNoClub, templateKey: 'summer_no_club' },
+            ];
+            return (
+              <ul className="space-y-2 text-sm">
+                {rows.map((r) => {
+                  const t = getDayTemplate(r.templateKey);
+                  const categories = [...new Set(t.blocks.map((b) => b.subjectCategory).filter((c) => c !== 'review'))];
+                  return (
+                    <li key={r.label} className="flex flex-wrap items-center justify-between gap-2 text-slate-700">
+                      <span>{r.label}</span>
+                      <span className="flex items-center gap-1.5">
+                        {categories.map((cat) => (
+                          <span
+                            key={cat}
+                            className={`rounded px-1.5 py-0.5 text-xs font-medium ${badgeByCat[cat]?.cn ?? 'bg-slate-100 text-slate-700'}`}
+                          >
+                            {badgeByCat[cat]?.label ?? cat}
+                          </span>
+                        ))}
+                        <span className="font-medium tabular-nums">{formatStudyTime(r.minutes)}</span>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            );
+          })()}
         </div>
       </section>
 
