@@ -187,7 +187,71 @@ export const SUBJECTS: Subject[] = [
     ],
     note: '実質解答時間30分。ICプレーヤー操作含む',
   },
-  // === 2日目 理科 ===
+  // === 2日目 理科（基礎は4分野から2つ選択＝2分野で100点）===
+  {
+    id: 'sci_physics_base',
+    name: '物理基礎',
+    score: 50,
+    time: 30,
+    day: 2,
+    category: '理科',
+    studyType: 'mixed',
+    memorizationRatio: 0.4,
+    thinkingRatio: 0.6,
+    processingSpeedCritical: false,
+    dailyPracticeNeeded: true,
+    recommendedDailyMin: 15,
+    crammingEffective: false,
+    tips: ['力学・波動・電気が中心。図やグラフの読み取りが重要'],
+  },
+  {
+    id: 'sci_chemistry_base',
+    name: '化学基礎',
+    score: 50,
+    time: 30,
+    day: 2,
+    category: '理科',
+    studyType: 'mixed',
+    memorizationRatio: 0.5,
+    thinkingRatio: 0.5,
+    processingSpeedCritical: false,
+    dailyPracticeNeeded: true,
+    recommendedDailyMin: 15,
+    crammingEffective: false,
+    tips: ['物質の性質・化学反応・実験の基礎'],
+  },
+  {
+    id: 'sci_biology_base',
+    name: '生物基礎',
+    score: 50,
+    time: 30,
+    day: 2,
+    category: '理科',
+    studyType: 'mixed',
+    memorizationRatio: 0.5,
+    thinkingRatio: 0.5,
+    processingSpeedCritical: false,
+    dailyPracticeNeeded: true,
+    recommendedDailyMin: 15,
+    crammingEffective: false,
+    tips: ['生命の連続性・生物の多様性・生態系'],
+  },
+  {
+    id: 'sci_earth_base',
+    name: '地学基礎',
+    score: 50,
+    time: 30,
+    day: 2,
+    category: '理科',
+    studyType: 'mixed',
+    memorizationRatio: 0.4,
+    thinkingRatio: 0.6,
+    processingSpeedCritical: false,
+    dailyPracticeNeeded: true,
+    recommendedDailyMin: 15,
+    crammingEffective: false,
+    tips: ['地層・岩石・地球の歴史。図表の読み取りが重要'],
+  },
   {
     id: 'sci_base',
     name: '物理基礎/化学基礎/生物基礎/地学基礎',
@@ -377,6 +441,11 @@ export const EXAM_DAY2_ORDER: string[] = [
   'math1a', 'math2bc', 'info1',
 ];
 
+/** 理科基礎（4分野から2つ選択）。仮本番では1スロット60分として表示 */
+export const SCI_BASE_SUBJECT_IDS: string[] = [
+  'sci_physics_base', 'sci_chemistry_base', 'sci_biology_base', 'sci_earth_base',
+];
+
 const BREAK_BETWEEN_SUBJECTS_MINUTES = 10;
 
 export interface ExamSlot {
@@ -395,6 +464,41 @@ export function getExamSlotsForDay(
   const set = new Set(subjectIds);
   for (let i = 0; i < dayOrder.length; i++) {
     const id = dayOrder[i];
+    if (id === 'sci_base') {
+      const hasSciBase = set.has('sci_base');
+      const hasAnyBase = SCI_BASE_SUBJECT_IDS.some((sid) => set.has(sid));
+      if (hasSciBase) {
+        const sub = getSubjectById('sci_base');
+        if (sub) {
+          if (slots.length > 0) {
+            slots.push({
+              type: 'break',
+              durationSeconds: BREAK_BETWEEN_SUBJECTS_MINUTES * 60,
+            });
+          }
+          slots.push({
+            type: 'subject',
+            subjectId: 'sci_base',
+            name: sub.name,
+            durationSeconds: sub.time * 60,
+          });
+        }
+      } else if (hasAnyBase) {
+        if (slots.length > 0) {
+          slots.push({
+            type: 'break',
+            durationSeconds: BREAK_BETWEEN_SUBJECTS_MINUTES * 60,
+          });
+        }
+        slots.push({
+          type: 'subject',
+          subjectId: 'sci_base',
+          name: '理科基礎（2分野）',
+          durationSeconds: 60 * 60,
+        });
+      }
+      continue;
+    }
     if (!set.has(id)) continue;
     const sub = getSubjectById(id);
     if (sub) {

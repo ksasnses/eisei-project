@@ -15,6 +15,7 @@ import { useStudyStore } from '../stores/studyStore';
 import { getSubjectById } from '../constants/subjects';
 import { EXAM_TEMPLATES } from '../constants/examTemplates';
 import { formatDateForInput } from '../utils/dateUtils';
+import { getStudyMinutesSummary } from '../utils/scheduleUtils';
 
 const TIME_OPTIONS = (() => {
   const opts: string[] = [];
@@ -210,6 +211,14 @@ export function SettingsPage() {
   if (!profile) return null;
 
   const schedule = profile.dailySchedule;
+
+  const studyMinutes = useMemo(
+    () => getStudyMinutesSummary(schedule),
+    [schedule]
+  );
+
+  const formatStudyTime = (minutes: number) =>
+    `${Math.floor(minutes / 60)}時間${minutes % 60 ? minutes % 60 + '分' : ''}`;
 
   return (
     <div className="mx-auto max-w-3xl px-4 pb-24 pt-4" style={{ color: '#0f172a' }}>
@@ -407,6 +416,24 @@ export function SettingsPage() {
               }
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
             />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-600">
+              試験勉強を開始する日
+            </label>
+            <input
+              type="date"
+              value={profile.studyStartDate?.slice(0, 10) ?? formatDateForInput(new Date())}
+              onChange={(e) =>
+                updateProfile({
+                  studyStartDate: e.target.value,
+                })
+              }
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              この日以降に学習計画が生成されます
+            </p>
           </div>
         </div>
       </section>
@@ -654,6 +681,30 @@ export function SettingsPage() {
               </div>
             </div>
           </div>
+        </div>
+
+        <div className="mt-6 rounded-xl bg-slate-50 p-4">
+          <p className="mb-3 text-sm font-medium text-slate-700">
+            1日の勉強可能時間（上記スケジュールから自動計算）
+          </p>
+          <ul className="space-y-2 text-sm">
+            <li className="flex justify-between text-slate-700">
+              <span>部活のない日（平日）</span>
+              <span className="font-medium tabular-nums">{formatStudyTime(studyMinutes.noClubWeekday)}</span>
+            </li>
+            <li className="flex justify-between text-slate-700">
+              <span>部活のない日（土日・休日）</span>
+              <span className="font-medium tabular-nums">{formatStudyTime(studyMinutes.noClubWeekend)}</span>
+            </li>
+            <li className="flex justify-between text-slate-700">
+              <span>部活のある日（平日）</span>
+              <span className="font-medium tabular-nums">{formatStudyTime(studyMinutes.withClubWeekday)}</span>
+            </li>
+            <li className="flex justify-between text-slate-700">
+              <span>部活のある日（土日・休日）</span>
+              <span className="font-medium tabular-nums">{formatStudyTime(studyMinutes.withClubWeekend)}</span>
+            </li>
+          </ul>
         </div>
       </section>
 

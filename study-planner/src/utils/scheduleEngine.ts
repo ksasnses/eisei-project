@@ -15,14 +15,7 @@ import { getPomodoroConfig } from '../constants/pomodoroConfig';
 import { detectPhase } from './phaseDetector';
 import { allocateTime, type SubjectTimeAllocation } from './timeAllocation';
 import { generateReviewTasks } from './forgettingCurve';
-
-const AVAILABLE = {
-  CLUB_DAY: 150,
-  NO_CLUB_WEEKDAY: 270,
-  WEEKEND_NO_EVENT: 360,
-  MATCH_DAY: 60,
-  EVENT_DAY: 30,
-} as const;
+import { getAvailableMinutesFromSchedule } from './scheduleUtils';
 
 const MIN_ENGLISH_MATH_MINUTES = 15;
 
@@ -38,7 +31,8 @@ function isDateInRange(dateStr: string, event: EventDate): boolean {
 }
 
 /**
- * 指定日が部活日・試合日・イベント日かどうかと利用可能時間（分）を返す
+ * 指定日が部活日・試合日・イベント日かどうかと利用可能時間（分）を返す。
+ * 利用可能時間はスケジュール設定から計算し、ホーム・設定の勉強可能時間と一致させる。
  */
 function getAvailableMinutes(
   profile: StudentProfile,
@@ -52,8 +46,6 @@ function getAvailableMinutes(
 } {
   const dayOfWeek = getDay(parseISO(targetDate));
   const isClubDay = profile.dailySchedule.clubDays.includes(dayOfWeek);
-  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-
   const isMatchDay = events.some(
     (e) => e.type === 'tennis_match' && isDateInRange(targetDate, e)
   );
@@ -61,12 +53,11 @@ function getAvailableMinutes(
     (e) => e.type !== 'tennis_match' && isDateInRange(targetDate, e)
   );
 
-  let availableMinutes: number;
-  if (isMatchDay) availableMinutes = AVAILABLE.MATCH_DAY;
-  else if (isEventDay) availableMinutes = AVAILABLE.EVENT_DAY;
-  else if (isWeekend && !isClubDay) availableMinutes = AVAILABLE.WEEKEND_NO_EVENT;
-  else if (isClubDay) availableMinutes = AVAILABLE.CLUB_DAY;
-  else availableMinutes = AVAILABLE.NO_CLUB_WEEKDAY;
+  const availableMinutes = getAvailableMinutesFromSchedule(
+    profile,
+    events,
+    targetDate
+  );
 
   return {
     availableMinutes,
@@ -138,6 +129,59 @@ function orderTasks(tasks: StudyTask[]): StudyTask[] {
     const bi = order.indexOf(b.pomodoroType);
     return ai - bi;
   });
+}
+
+/**
+ * タスク合計を勉強可能時間以内に収める。復習を優先し、新規・毎日学習を削る。
+ * 試験当日までにノルマを達成するため、復習は維持する。
+ */
+function capTasksToAvailable(
+  tasks: StudyTask[],
+  availableMinutes: number
+): StudyTask[] {
+  const total = tasks.reduce((s, t) => s + t.estimatedMinutes, 0);
+  if (total <= availableMinutes) return tasks;
+
+  const isReview = (t: StudyTask) => t.type === 'review' || t.reviewSource != null;
+  const reviewTasks = tasks.filter(isReview);
+  const otherTasks = tasks.filter((t) => !isReview(t));
+  const reviewTotal = reviewTasks.reduce((s, t) => s + t.estimatedMinutes, 0);
+
+  const workMin = getPomodoroConfig('thinking').workMinutes;
+
+  if (reviewTotal >= availableMinutes) {
+    const ratio = availableMinutes / reviewTotal;
+    const cappedReview = reviewTasks.map((t) => {
+      const min = Math.max(workMin, Math.floor((t.estimatedMinutes * ratio) / workMin) * workMin);
+      const count = Math.max(1, Math.floor(min / workMin));
+      return { ...t, estimatedMinutes: count * workMin, pomodoroCount: count };
+    });
+    let sum = cappedReview.reduce((s, t) => s + t.estimatedMinutes, 0);
+    if (sum > availableMinutes) {
+      const last = cappedReview[cappedReview.length - 1];
+      if (last) {
+        const reduce = sum - availableMinutes;
+        const newMin = Math.max(workMin, last.estimatedMinutes - reduce);
+        const count = Math.max(1, Math.floor(newMin / workMin));
+        cappedReview[cappedReview.length - 1] = { ...last, estimatedMinutes: count * workMin, pomodoroCount: count };
+      }
+    }
+    return cappedReview.filter((t) => t.estimatedMinutes > 0);
+  }
+
+  const remainingForOthers = availableMinutes - reviewTotal;
+  let used = 0;
+  const cappedOther: StudyTask[] = [];
+  for (const t of otherTasks) {
+    const take = Math.min(t.estimatedMinutes, Math.max(0, remainingForOthers - used));
+    if (take <= 0) continue;
+    const count = Math.max(0, Math.floor(take / workMin)) || (take > 0 ? 1 : 0);
+    const estimatedMinutes = count * workMin;
+    if (estimatedMinutes <= 0) continue;
+    used += estimatedMinutes;
+    cappedOther.push({ ...t, pomodoroCount: count, estimatedMinutes });
+  }
+  return [...reviewTasks, ...cappedOther];
 }
 
 /** 英語・数学に最低時間を保証（既存タスクに足りなければ追加） */
@@ -219,6 +263,7 @@ export function generateDailyPlan(
   let allTasks = [...reviewTasks, ...newTasks];
   allTasks = ensureDailyPractice(allTasks, profile, targetDate, 1000);
   allTasks = orderTasks(allTasks);
+  allTasks = capTasksToAvailable(allTasks, availableMinutes);
 
   const completionRate = 0;
 

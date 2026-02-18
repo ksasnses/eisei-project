@@ -1,6 +1,6 @@
 import { useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { format, subDays } from 'date-fns';
+import { format, subDays, getDay, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import {
   BarChart,
@@ -21,6 +21,7 @@ import { useStudyStore } from '../stores/studyStore';
 import { getPhaseByDaysLeft } from '../constants/phaseConfig';
 import { getSubjectById } from '../constants/subjects';
 import { daysUntilExam } from '../utils/dateUtils';
+import { getStudyMinutesSummary } from '../utils/scheduleUtils';
 import type { StudyTask } from '../types';
 
 const TYPE_LABELS: Record<StudyTask['type'], string> = {
@@ -61,9 +62,23 @@ export function DashboardPage() {
   const daysLeft = profile ? daysUntilExam(profile.examDate) : 0;
   const phase = getPhaseByDaysLeft(daysLeft);
   const isClubDay = plan?.isClubDay ?? false;
+
+  // 設定タブの「1日の勉強可能時間」と同じ計算で表示（一致させる）
+  const studyMinutesForToday = useMemo(() => {
+    if (!profile) return 0;
+    const summary = getStudyMinutesSummary(profile.dailySchedule);
+    const dayOfWeek = getDay(parseISO(today));
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    const clubDay = profile.dailySchedule.clubDays.includes(dayOfWeek);
+    if (clubDay && isWeekend) return summary.withClubWeekend;
+    if (clubDay) return summary.withClubWeekday;
+    if (isWeekend) return summary.noClubWeekend;
+    return summary.noClubWeekday;
+  }, [profile, today]);
+
   const studyHours =
-    plan != null
-      ? `約${Math.floor(plan.availableMinutes / 60)}時間${plan.availableMinutes % 60 ? plan.availableMinutes % 60 + '分' : ''}`
+    profile != null
+      ? `約${Math.floor(studyMinutesForToday / 60)}時間${studyMinutesForToday % 60 ? studyMinutesForToday % 60 + '分' : ''}`
       : '—';
 
   const weeklyCompletionRate = 0;

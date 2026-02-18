@@ -45,6 +45,8 @@ export interface ExamTemplate {
 export interface SelectGroup {
   from: string;
   count: number;
+  /** 指定時はこのID一覧から選択（未指定時は from カテゴリから取得） */
+  subjectIds?: string[];
   recommended?: string[];
 }
 
@@ -91,6 +93,8 @@ export interface StudentProfile {
   subjects: SelectedSubject[];
   dailySchedule: DailySchedule;
   examDate: string;
+  /** 試験勉強を開始する日（YYYY-MM-DD または ISO）。未設定時は計画開始日として今日を使用 */
+  studyStartDate?: string;
 }
 
 /** イベント */

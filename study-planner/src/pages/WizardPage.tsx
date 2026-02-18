@@ -68,6 +68,9 @@ export function WizardPage() {
   const [examDate, setExamDate] = useState<string>(() =>
     formatDateForInput(getDefaultExamDate())
   );
+  const [studyStartDate, setStudyStartDate] = useState<string>(() =>
+    formatDateForInput(new Date())
+  );
   const [name, setName] = useState('');
 
   const template = examTypeId ? getExamTemplateById(examTypeId) : null;
@@ -81,6 +84,14 @@ export function WizardPage() {
           (s) => s.id
         );
         return { from: sg.from, count: sg.count, subjectIds: optionalIds };
+      }
+      if (sg.subjectIds && sg.subjectIds.length > 0) {
+        return {
+          from: sg.from,
+          count: sg.count,
+          subjectIds: sg.subjectIds,
+          recommended: sg.recommended,
+        };
       }
       const subjects = getSubjectsByCategory(
         sg.from as Subject['category']
@@ -158,13 +169,21 @@ export function WizardPage() {
   }, [schedule, studyMinutesWithoutClub]);
 
   const studyMinutesWithClubWeekend = useMemo(() => {
+    // 土日・休日は「学校がない」前提で再計算（学校滞在時間は引かない）
+    const wake = parseTimeToMinutes(schedule.wakeUpTime);
+    const bed = parseTimeToMinutes(schedule.bedTime);
+    let dayMinutes = (bed < wake ? 24 * 60 : 0) + bed - wake;
+    // 休日は通学・授業時間を除外し、生活時間だけ差し引く
+    dayMinutes -= schedule.mealAndBathMinutes;
+    dayMinutes -= schedule.freeTimeBufferMinutes;
+
     const start = schedule.clubWeekendStart ?? schedule.clubStartTime;
     const end = schedule.clubWeekendEnd ?? schedule.clubEndTime;
     const clubStart = parseTimeToMinutes(start);
     const clubEnd = parseTimeToMinutes(end);
     const clubMinutes = (clubEnd < clubStart ? 24 * 60 : 0) + clubEnd - clubStart;
-    return Math.max(0, studyMinutesWithoutClub - clubMinutes);
-  }, [schedule, studyMinutesWithoutClub]);
+    return Math.max(0, dayMinutes - clubMinutes);
+  }, [schedule]);
 
   const handleStep2Toggle = (id: string, checked: boolean) => {
     const { required, selectGroups } = availableSubjectsForStep2;
@@ -244,6 +263,7 @@ export function WizardPage() {
       subjects,
       dailySchedule: schedule,
       examDate: new Date(examDate).toISOString(),
+      studyStartDate: new Date(studyStartDate).toISOString().slice(0, 10),
     };
     setProfile(profile);
     navigate('/', { replace: true });
@@ -295,15 +315,19 @@ export function WizardPage() {
                     const initialSelected = [...required];
                     if (t.selectGroups.length > 0 && t.selectGroups[0].from !== '全科目') {
                       for (const sg of t.selectGroups) {
-                        const subs = getSubjectsByCategory(
-                          sg.from as Subject['category']
-                        );
-                        const rec = sg.recommended
-                          ? subs.filter((s) => sg.recommended!.includes(s.id))
-                          : subs;
-                        rec.slice(0, sg.count).forEach((s) => {
-                          if (!initialSelected.includes(s.id))
-                            initialSelected.push(s.id);
+                        const toAdd = sg.subjectIds
+                          ? sg.subjectIds.slice(0, sg.count)
+                          : (() => {
+                              const subs = getSubjectsByCategory(
+                                sg.from as Subject['category']
+                              );
+                              const rec = sg.recommended
+                                ? subs.filter((s) => sg.recommended!.includes(s.id))
+                                : subs;
+                              return rec.slice(0, sg.count).map((s) => s.id);
+                            })();
+                        toAdd.forEach((id) => {
+                          if (!initialSelected.includes(id)) initialSelected.push(id);
                         });
                       }
                     }
@@ -407,16 +431,54 @@ export function WizardPage() {
               const selectedInGroup = selectedSubjectIds.filter((id) =>
                 sg.subjectIds.includes(id)
               );
+              const isOneOfMany =
+                sg.from === '数学' && sg.subjectIds.length >= 2 && sg.count === 1;
+              const isSciBase =
+                sg.from === '理科基礎' &&
+                sg.subjectIds.some((id) =>
+                  ['sci_physics_base', 'sci_chemistry_base', 'sci_biology_base', 'sci_earth_base'].includes(id)
+                );
+              const groupLabel = isOneOfMany
+                ? '数学ⅠA と 数学ⅡBC のどちらか1つを選択'
+                : isSciBase
+                  ? '物理基礎・化学基礎・生物基礎・地学基礎のうち2つを選択'
+                  : `${sg.from}から${sg.count}科目を選択`;
               return (
                 <div key={sg.from} className="mt-4">
                   <p className="mb-2 text-sm font-medium text-slate-600">
-                    {sg.from}から{sg.count}科目を選択
+                    {groupLabel}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {sg.subjectIds.map((id) => {
                       const s = getSubjectById(id);
                       if (!s) return null;
                       const checked = selectedInGroup.includes(id);
+                      if (sg.count === 1) {
+                        return (
+                          <label
+                            key={id}
+                            className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+                              checked
+                                ? 'border-blue-500 bg-blue-50 text-blue-800'
+                                : 'border-slate-200 hover:border-blue-200'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name={`step2-${sg.from}`}
+                              checked={checked}
+                              onChange={() =>
+                                handleStep2SelectGroup(sg.from, [id])
+                              }
+                              className="h-3.5 w-3.5 border-slate-300 text-blue-500"
+                            />
+                            {s.name}
+                            <span className="text-xs text-slate-400">
+                              {s.score}点/{s.time}分
+                            </span>
+                          </label>
+                        );
+                      }
                       return (
                         <label
                           key={id}
@@ -927,6 +989,20 @@ export function WizardPage() {
                 onChange={(e) => setExamDate(e.target.value)}
                 className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
               />
+            </div>
+            <div className="mb-6">
+              <label className="text-sm text-slate-600">
+                試験勉強を開始する日
+              </label>
+              <input
+                type="date"
+                value={studyStartDate}
+                onChange={(e) => setStudyStartDate(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                この日以降に学習計画が生成されます
+              </p>
             </div>
             <div className="rounded-xl bg-blue-600 px-6 py-8 text-center text-white">
               <div className="text-sm opacity-90">試験まであと</div>

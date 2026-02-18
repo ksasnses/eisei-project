@@ -9,13 +9,18 @@ export const EXAM_TEMPLATES: ExamTemplate[] = [
   {
     id: 'bunkeikokko',
     name: '国公立文系',
-    requiredSubjects: ['eng_r', 'eng_l', 'japanese', 'math1a', 'math2bc', 'info1'],
+    requiredSubjects: ['eng_r', 'eng_l', 'japanese', 'info1'],
     selectGroups: [
-      { from: '地歴公民', count: 2 },
-      { from: '理科', count: 1, recommended: ['sci_base'] },
+      { from: '地歴公民', count: 1 },
+      { from: '数学', count: 1, subjectIds: ['math1a', 'math2bc'] },
+      {
+        from: '理科基礎',
+        count: 2,
+        subjectIds: ['sci_physics_base', 'sci_chemistry_base', 'sci_biology_base', 'sci_earth_base'],
+      },
     ],
-    totalScore: 900,
-    note: '地歴公民2科目＋理科基礎が一般的',
+    totalScore: 700,
+    note: '地歴公民1科目＋数学ⅠAまたはⅡBCのどちらか1つ＋理科基礎から2分野選択',
   },
   {
     id: 'rikeikokko',
