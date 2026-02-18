@@ -73,8 +73,14 @@ export interface DailySchedule {
   commuteMinutesOneWay: number;
   mealAndBathMinutes: number;
   clubDays: number[];
+  /** 平日の部活 開始（月〜金で部活がある日） */
   clubStartTime: string;
+  /** 平日の部活 終了 */
   clubEndTime: string;
+  /** 土日・休日の部活 開始（省略時は平日と同じ） */
+  clubWeekendStart?: string;
+  /** 土日・休日の部活 終了 */
+  clubWeekendEnd?: string;
   freeTimeBufferMinutes: number;
 }
 

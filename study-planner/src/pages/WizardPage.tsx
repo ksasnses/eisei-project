@@ -39,6 +39,8 @@ const defaultSchedule: DailySchedule = {
   clubDays: [],
   clubStartTime: '15:30',
   clubEndTime: '18:00',
+  clubWeekendStart: '09:00',
+  clubWeekendEnd: '12:00',
   freeTimeBufferMinutes: 30,
 };
 
@@ -148,9 +150,18 @@ export function WizardPage() {
     return Math.max(0, dayMinutes);
   }, [schedule]);
 
-  const studyMinutesWithClub = useMemo(() => {
+  const studyMinutesWithClubWeekday = useMemo(() => {
     const clubStart = parseTimeToMinutes(schedule.clubStartTime);
     const clubEnd = parseTimeToMinutes(schedule.clubEndTime);
+    const clubMinutes = (clubEnd < clubStart ? 24 * 60 : 0) + clubEnd - clubStart;
+    return Math.max(0, studyMinutesWithoutClub - clubMinutes);
+  }, [schedule, studyMinutesWithoutClub]);
+
+  const studyMinutesWithClubWeekend = useMemo(() => {
+    const start = schedule.clubWeekendStart ?? schedule.clubStartTime;
+    const end = schedule.clubWeekendEnd ?? schedule.clubEndTime;
+    const clubStart = parseTimeToMinutes(start);
+    const clubEnd = parseTimeToMinutes(end);
     const clubMinutes = (clubEnd < clubStart ? 24 * 60 : 0) + clubEnd - clubStart;
     return Math.max(0, studyMinutesWithoutClub - clubMinutes);
   }, [schedule, studyMinutesWithoutClub]);
@@ -792,53 +803,88 @@ export function WizardPage() {
                   ))}
                 </div>
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-4">
                 <div>
-                  <label className="text-sm text-slate-600">部活 開始</label>
-                  <select
-                    value={schedule.clubStartTime}
-                    onChange={(e) =>
-                      setSchedule((s) => ({
-                        ...s,
-                        clubStartTime: e.target.value,
-                      }))
-                    }
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                  >
-                    {TIME_OPTIONS.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
+                  <p className="mb-2 text-sm font-medium text-slate-600">平日（月〜金）の部活時間</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs text-slate-500">開始</label>
+                      <select
+                        value={schedule.clubStartTime}
+                        onChange={(e) =>
+                          setSchedule((s) => ({ ...s, clubStartTime: e.target.value }))
+                        }
+                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                      >
+                        {TIME_OPTIONS.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-500">終了</label>
+                      <select
+                        value={schedule.clubEndTime}
+                        onChange={(e) =>
+                          setSchedule((s) => ({ ...s, clubEndTime: e.target.value }))
+                        }
+                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                      >
+                        {TIME_OPTIONS.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 </div>
                 <div>
-                  <label className="text-sm text-slate-600">部活 終了</label>
-                  <select
-                    value={schedule.clubEndTime}
-                    onChange={(e) =>
-                      setSchedule((s) => ({
-                        ...s,
-                        clubEndTime: e.target.value,
-                      }))
-                    }
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                  >
-                    {TIME_OPTIONS.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
+                  <p className="mb-2 text-sm font-medium text-slate-600">土日・休日の部活時間</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs text-slate-500">開始</label>
+                      <select
+                        value={schedule.clubWeekendStart ?? schedule.clubStartTime}
+                        onChange={(e) =>
+                          setSchedule((s) => ({ ...s, clubWeekendStart: e.target.value }))
+                        }
+                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                      >
+                        {TIME_OPTIONS.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-500">終了</label>
+                      <select
+                        value={schedule.clubWeekendEnd ?? schedule.clubEndTime}
+                        onChange={(e) =>
+                          setSchedule((s) => ({ ...s, clubWeekendEnd: e.target.value }))
+                        }
+                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                      >
+                        {TIME_OPTIONS.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
               <div className="rounded-xl bg-slate-100 px-4 py-4 text-center">
-                <div className="text-sm text-slate-600">部活ありの日</div>
+                <div className="text-sm text-slate-600">部活ありの日（平日）</div>
                 <div className="text-xl font-bold text-slate-700">
-                  {Math.floor(studyMinutesWithClub / 60)}時間
-                  {studyMinutesWithClub % 60}分
+                  {Math.floor(studyMinutesWithClubWeekday / 60)}時間
+                  {studyMinutesWithClubWeekday % 60}分
+                </div>
+              </div>
+              <div className="rounded-xl bg-slate-100 px-4 py-4 text-center">
+                <div className="text-sm text-slate-600">部活ありの日（土日・休日）</div>
+                <div className="text-xl font-bold text-slate-700">
+                  {Math.floor(studyMinutesWithClubWeekend / 60)}時間
+                  {studyMinutesWithClubWeekend % 60}分
                 </div>
               </div>
               <div className="rounded-xl bg-blue-50 px-4 py-4 text-center">

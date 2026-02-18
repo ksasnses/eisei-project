@@ -578,38 +578,80 @@ export function SettingsPage() {
               ))}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-4">
             <div>
-              <label className="block text-sm text-slate-600">部活 開始</label>
-              <select
-                value={schedule.clubStartTime}
-                onChange={(e) =>
-                  updateProfile({
-                    dailySchedule: { ...schedule, clubStartTime: e.target.value },
-                  })
-                }
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-              >
-                {TIME_OPTIONS.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
+              <p className="mb-2 text-sm font-medium text-slate-600">平日（月〜金）の部活時間</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-slate-500">開始</label>
+                  <select
+                    value={schedule.clubStartTime}
+                    onChange={(e) =>
+                      updateProfile({
+                        dailySchedule: { ...schedule, clubStartTime: e.target.value },
+                      })
+                    }
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  >
+                    {TIME_OPTIONS.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500">終了</label>
+                  <select
+                    value={schedule.clubEndTime}
+                    onChange={(e) =>
+                      updateProfile({
+                        dailySchedule: { ...schedule, clubEndTime: e.target.value },
+                      })
+                    }
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  >
+                    {TIME_OPTIONS.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
             <div>
-              <label className="block text-sm text-slate-600">部活 終了</label>
-              <select
-                value={schedule.clubEndTime}
-                onChange={(e) =>
-                  updateProfile({
-                    dailySchedule: { ...schedule, clubEndTime: e.target.value },
-                  })
-                }
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-              >
-                {TIME_OPTIONS.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
+              <p className="mb-2 text-sm font-medium text-slate-600">土日・休日の部活時間</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-slate-500">開始</label>
+                  <select
+                    value={schedule.clubWeekendStart ?? schedule.clubStartTime}
+                    onChange={(e) =>
+                      updateProfile({
+                        dailySchedule: { ...schedule, clubWeekendStart: e.target.value },
+                      })
+                    }
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  >
+                    {TIME_OPTIONS.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500">終了</label>
+                  <select
+                    value={schedule.clubWeekendEnd ?? schedule.clubEndTime}
+                    onChange={(e) =>
+                      updateProfile({
+                        dailySchedule: { ...schedule, clubWeekendEnd: e.target.value },
+                      })
+                    }
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  >
+                    {TIME_OPTIONS.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
           </div>
         </div>
