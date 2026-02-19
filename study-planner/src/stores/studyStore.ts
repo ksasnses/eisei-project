@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { DailyPlan, StudyTask } from '../types';
 import { useStudentStore } from './studentStore';
+import { useCurriculumStore } from './curriculumStore';
 import { generateDailyPlan as generateDailyPlanEngine } from '../utils/scheduleEngine';
 
 interface StudyState {
@@ -87,6 +88,10 @@ export const useStudyStore = create<StudyState>()(
             : state.completedTasks;
 
           const reviewQueue = state.reviewQueue.filter((t) => t.id !== taskId);
+
+          if (completedTask?.textbookId) {
+            useCurriculumStore.getState().incrementCompletedUnit(completedTask.textbookId);
+          }
 
           return {
             dailyPlans: plans,

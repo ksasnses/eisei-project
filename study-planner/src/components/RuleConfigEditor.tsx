@@ -16,7 +16,9 @@ import {
 } from 'lucide-react';
 import { useRuleConfigStore } from '../stores/ruleConfigStore';
 import { useStudyStore } from '../stores/studyStore';
+import { useStudentStore } from '../stores/studentStore';
 import { formatDateForInput } from '../utils/dateUtils';
+import { getStudyMinutesSummary } from '../utils/scheduleUtils';
 import type { DayTemplateConfig, BlockConfig, DayType } from '../types';
 import { DAY_TYPE_DISPLAY } from '../types';
 
@@ -48,6 +50,71 @@ function formatStudyTime(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   return m ? `${h}時間${m}分` : `${h}時間`;
+}
+
+/** 日種別 → 勉強可能時間のマッピング */
+function getAvailableForDayType(
+  summary: ReturnType<typeof getStudyMinutesSummary>,
+  dayType: DayType
+): number {
+  switch (dayType) {
+    case 'weekday_club': return summary.withClubWeekday;
+    case 'weekday_no_club': return summary.noClubWeekday;
+    case 'weekend_holiday': return summary.noClubWeekend;
+    case 'summer_club': return summary.summerClub;
+    case 'summer_no_club': return summary.summerNoClub;
+    default: return 0;
+  }
+}
+
+/** ブロック編集時のバリデーション表示 */
+function DayTemplateValidation({
+  dayType,
+  blockTotalMinutes,
+  maxReviewMinutes,
+}: {
+  dayType: DayType;
+  blockTotalMinutes: number;
+  maxReviewMinutes: number;
+}) {
+  const profile = useStudentStore((s) => s.profile);
+  const config = useRuleConfigStore((s) => s.config);
+  if (!profile) return null;
+  const summary = getStudyMinutesSummary(profile.dailySchedule);
+  const rawAvailable = getAvailableForDayType(summary, dayType);
+  const bufferRatio = config.generalRules.bufferRatio ?? 0.15;
+  const bufferMinutes = Math.ceil(rawAvailable * bufferRatio);
+  const effectiveMinutes = Math.max(0, rawAvailable - bufferMinutes);
+  const reviewCap = Math.min(maxReviewMinutes, Math.floor(effectiveMinutes * 0.2));
+  const remainingForBlocks = effectiveMinutes - reviewCap;
+  const isOver = blockTotalMinutes > remainingForBlocks;
+  const margin = remainingForBlocks - blockTotalMinutes;
+
+  return (
+    <div className="mt-4 space-y-1 text-sm">
+      <div className="text-slate-600">
+        ブロック合計：{formatStudyTime(blockTotalMinutes)}
+      </div>
+      <div className="text-slate-600">
+        勉強可能時間：{formatStudyTime(rawAvailable)}
+        （ゆとり{Math.round(bufferRatio * 100)}%適用後：{formatStudyTime(effectiveMinutes)}）
+      </div>
+      {isOver ? (
+        <p className="rounded bg-amber-100 px-2 py-1 text-amber-800">
+          ⚠️ ブロック合計が実効時間を超えています！
+          <br />
+          → 自動的に優先度の低いブロックから削減されます
+        </p>
+      ) : margin > 0 ? (
+        <p className="rounded bg-green-100 px-2 py-1 text-green-800">
+          ✅ {formatStudyTime(margin)}のゆとりがあります
+        </p>
+      ) : null}
+      <div className="text-slate-500">
+        復習含む最大：{formatStudyTime(blockTotalMinutes + maxReviewMinutes)}
+      </div>
+    </div>
+  );
 }
 
 function makeBlockId(): string {
@@ -364,10 +431,11 @@ function DayTemplatesSection({
                   <Plus className="h-4 w-4" />
                   ブロックを追加
                 </button>
-                <div className="mt-4 text-sm text-slate-600">
-                  合計勉強時間：{formatStudyTime(editTotalMinutes)}　
-                  復習含む最大：{formatStudyTime(editTotalMinutes + editState.maxReviewMinutes)}
-                </div>
+                <DayTemplateValidation
+                  dayType={editState.dayType}
+                  blockTotalMinutes={editTotalMinutes}
+                  maxReviewMinutes={editState.maxReviewMinutes}
+                />
                 <div className="mt-4 flex justify-end gap-2">
                   <button
                     type="button"
@@ -679,6 +747,34 @@ function GeneralRulesSection({ onSaveToast }: { onSaveToast: () => void }) {
         />
         <span>数学ⅠA/ⅡBCの日替わり重点切替</span>
       </label>
+      <div>
+        <label className="block text-sm font-medium text-slate-700">
+          ゆとり率（%）
+        </label>
+        <p className="mt-0.5 text-xs text-slate-500">
+          勉強可能時間のうち◯%を、休息や予定のズレに備えたバッファとして確保します
+        </p>
+        <div className="mt-2 flex items-center gap-3">
+          <input
+            type="range"
+            min={5}
+            max={30}
+            step={5}
+            value={Math.round(((gr.bufferRatio ?? 0.15) * 100))}
+            onChange={(e) => {
+              const pct = Number(e.target.value);
+              updateGeneralRules({ bufferRatio: pct / 100 });
+            }}
+            className="h-2 flex-1 accent-indigo-600"
+          />
+          <span className="w-12 tabular-nums text-sm font-medium">
+            {Math.round(((gr.bufferRatio ?? 0.15) * 100))}%
+          </span>
+        </div>
+        <p className="mt-1 text-xs text-slate-500">
+          5%: 詰め込み / 15%: 標準推奨 / 30%: のんびり
+        </p>
+      </div>
       <div>
         <label className="block text-sm font-medium text-slate-700">
           ポモドーロ作業時間のデフォルト（分）

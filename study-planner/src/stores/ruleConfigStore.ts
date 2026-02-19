@@ -202,6 +202,15 @@ export const useRuleConfigStore = create<RuleConfigState>()(
           config: setUpdatedAt(addChangeLog(state.config, description)),
         })),
     }),
-    { name: 'schedule-rule-config' }
+    {
+      name: 'schedule-rule-config',
+      merge: (persisted, current) => {
+        const p = persisted as { config?: ScheduleRuleConfig } | undefined;
+        if (p?.config?.generalRules && p.config.generalRules.bufferRatio == null) {
+          (p.config.generalRules as Record<string, unknown>).bufferRatio = 0.15;
+        }
+        return { ...current, ...p };
+      },
+    }
   )
 );

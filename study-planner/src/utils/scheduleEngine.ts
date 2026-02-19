@@ -13,17 +13,19 @@ import type {
   SelectedSubject,
   StudyBlock,
 } from '../types';
+import type { Textbook } from '../types';
+import { unitLabelToDisplay } from '../stores/curriculumStore';
 import type { DayType } from '../types';
 import type { PhaseName } from '../types';
 import { getSubjectById } from '../constants/subjects';
 import { getPomodoroConfig } from '../constants/pomodoroConfig';
 import { useRuleConfigStore } from '../stores/ruleConfigStore';
+import { useCurriculumStore } from '../stores/curriculumStore';
 import { detectPhase } from './phaseDetector';
 import { type SubjectTimeAllocation } from './timeAllocation';
 import { generateReviewTasks } from './forgettingCurve';
 import { getAvailableMinutesFromSchedule } from './scheduleUtils';
 import { getAdjustedTemplate } from '../constants/dayTemplates';
-import type { DayTemplate } from '../types';
 
 const MIN_ENGLISH_MATH_MINUTES = 15;
 
@@ -119,8 +121,60 @@ function getPhaseContents(
   return pc?.contents ?? [];
 }
 
+/** 教材からタスク用のコンテンツ文字列を生成 */
+function textbookTaskContent(textbook: Textbook, unitIndex: number): string {
+  const unitLabel = unitLabelToDisplay(textbook.unitLabel, textbook.customUnitLabel);
+  return `${textbook.name} 第${unitIndex + 1}${unitLabel}`;
+}
+
+/** ブロック用の有効教材リスト（一時停止・完了済みを除外）を取得 */
+function getActiveTextbooksForBlock(
+  subjectIds: string[]
+): { textbook: Textbook; subjectId: string }[] {
+  const getTextbooks = useCurriculumStore.getState().getTextbooks;
+  const result: { textbook: Textbook; subjectId: string }[] = [];
+  for (const subjectId of subjectIds) {
+    const list = getTextbooks(subjectId).filter(
+      (t) => t.status === 'active' && t.completedUnitCount < t.totalUnits
+    );
+    for (const t of list) {
+      result.push({ textbook: t, subjectId });
+    }
+  }
+  return result.sort((a, b) => a.textbook.priority - b.textbook.priority);
+}
+
+/**
+ * 教材をポモドーロ数に分配
+ * pomodoroCount >= 教材数: 各1 + 残りは優先度順
+ * pomodoroCount < 教材数: 日替わりローテーション
+ */
+function distributeTextbooksToPomodoros(
+  items: { textbook: Textbook; subjectId: string }[],
+  pomodoroCount: number,
+  targetDate: string
+): { textbook: Textbook; subjectId: string }[] {
+  if (items.length === 0) return [];
+  if (pomodoroCount >= items.length) {
+    const base = items.map((x) => x);
+    const extra = pomodoroCount - items.length;
+    for (let i = 0; i < extra; i++) {
+      base.push(items[i % items.length]!);
+    }
+    return base.sort((a, b) => a.textbook.priority - b.textbook.priority);
+  }
+  const dayNum = differenceInCalendarDays(parseISO(targetDate), parseISO('2000-01-01'));
+  const result: { textbook: Textbook; subjectId: string }[] = [];
+  for (let i = 0; i < pomodoroCount; i++) {
+    const idx = (dayNum * pomodoroCount + i) % items.length;
+    result.push(items[idx]!);
+  }
+  return result;
+}
+
 /**
  * StudyBlock を具体的な StudyTask の配列に変換する
+ * 教材が登録されていれば教材ベース、なければフェーズ内容で生成
  */
 function blockToTasks(
   block: StudyBlock,
@@ -146,15 +200,38 @@ function blockToTasks(
     const hasR = selectedIds.includes('eng_r');
     const hasL = selectedIds.includes('eng_l');
     if (!hasR && !hasL) return [];
+    const items = getActiveTextbooksForBlock(selectedIds);
+    if (items.length > 0) {
+      const distributed = distributeTextbooksToPomodoros(
+        items,
+        block.pomodoroCount,
+        targetDate
+      );
+      const unitOffsetByTb = new Map<string, number>();
+      for (const { textbook, subjectId } of distributed) {
+        const offset = unitOffsetByTb.get(textbook.id) ?? 0;
+        const unitIndex = textbook.completedUnitCount + offset;
+        if (unitIndex >= textbook.totalUnits) continue;
+        unitOffsetByTb.set(textbook.id, offset + 1);
+        const estMin = textbook.minutesPerUnit;
+        tasks.push({
+          id: `${textbook.id}_${targetDate}_${index++}`,
+          subjectId,
+          type: 'new',
+          content: textbookTaskContent(textbook, unitIndex),
+          pomodoroType: getPomoType(subjectId),
+          pomodoroCount: 1,
+          estimatedMinutes: estMin,
+          completed: false,
+          textbookId: textbook.id,
+          unitIndex,
+        });
+      }
+      return tasks;
+    }
     const contents = getPhaseContents('english', phase);
     const subjectIds =
-      hasR && hasL
-        ? ['eng_r', 'eng_l', 'eng_l']
-        : hasR
-          ? ['eng_r', 'eng_r', 'eng_r']
-          : hasL
-            ? ['eng_l', 'eng_l', 'eng_l']
-            : [];
+      hasR && hasL ? ['eng_r', 'eng_l', 'eng_l'] : hasR ? ['eng_r', 'eng_r', 'eng_r'] : ['eng_l', 'eng_l', 'eng_l'];
     for (let i = 0; i < block.pomodoroCount && i < contents.length; i++) {
       const subjectId = subjectIds[i] ?? subjectIds[0] ?? 'eng_r';
       tasks.push({
@@ -174,23 +251,63 @@ function blockToTasks(
   if (block.subjectCategory === 'math') {
     const has1a = selectedIds.includes('math1a');
     const has2bc = selectedIds.includes('math2bc');
+    if (!has1a && !has2bc) return [];
+    const items = getActiveTextbooksForBlock(selectedIds);
+    if (items.length > 0) {
+      const mathAlternate = useRuleConfigStore.getState().config.generalRules.mathAlternate;
+      const dayNum = differenceInCalendarDays(parseISO(targetDate), parseISO('2000-01-01'));
+      const isOdd = dayNum % 2 === 1;
+      const items1a = items.filter((x) => x.subjectId === 'math1a');
+      const items2bc = items.filter((x) => x.subjectId === 'math2bc');
+      let distributed: { textbook: Textbook; subjectId: string }[];
+      if (has1a && has2bc && mathAlternate) {
+        const p1a = isOdd ? 2 : 1;
+        const p2bc = isOdd ? 1 : 2;
+        distributed = [
+          ...distributeTextbooksToPomodoros(items1a, Math.min(p1a, block.pomodoroCount), targetDate),
+          ...distributeTextbooksToPomodoros(
+            items2bc,
+            Math.min(p2bc, Math.max(0, block.pomodoroCount - p1a)),
+            targetDate
+          ),
+        ].slice(0, block.pomodoroCount);
+      } else {
+        distributed = distributeTextbooksToPomodoros(items, block.pomodoroCount, targetDate);
+      }
+      const unitOffsetByTb = new Map<string, number>();
+      for (const { textbook, subjectId } of distributed) {
+        const offset = unitOffsetByTb.get(textbook.id) ?? 0;
+        const unitIndex = textbook.completedUnitCount + offset;
+        if (unitIndex >= textbook.totalUnits) continue;
+        unitOffsetByTb.set(textbook.id, offset + 1);
+        tasks.push({
+          id: `${textbook.id}_${targetDate}_${index++}`,
+          subjectId,
+          type: 'new',
+          content: textbookTaskContent(textbook, unitIndex),
+          pomodoroType: getPomoType(subjectId),
+          pomodoroCount: 1,
+          estimatedMinutes: textbook.minutesPerUnit,
+          completed: false,
+          textbookId: textbook.id,
+          unitIndex,
+        });
+      }
+      return tasks;
+    }
+    const contents = getPhaseContents('math', phase);
     const dayNum = differenceInCalendarDays(parseISO(targetDate), parseISO('2000-01-01'));
     const isOdd = dayNum % 2 === 1;
     const mathAlternate = useRuleConfigStore.getState().config.generalRules.mathAlternate;
-    const contents = getPhaseContents('math', phase);
     let subIds: string[];
     if (has1a && has2bc) {
       subIds = mathAlternate
-        ? isOdd
-          ? ['math1a', 'math1a', 'math2bc']
-          : ['math1a', 'math2bc', 'math2bc']
+        ? isOdd ? ['math1a', 'math1a', 'math2bc'] : ['math1a', 'math2bc', 'math2bc']
         : ['math1a', 'math2bc', 'math1a'];
     } else if (has1a) {
       subIds = ['math1a', 'math1a', 'math1a'];
-    } else if (has2bc) {
-      subIds = ['math2bc', 'math2bc', 'math2bc'];
     } else {
-      subIds = [];
+      subIds = ['math2bc', 'math2bc', 'math2bc'];
     }
     for (let i = 0; i < block.pomodoroCount && i < subIds.length; i++) {
       const subjectId = subIds[i] ?? subIds[0];
@@ -210,9 +327,51 @@ function blockToTasks(
   }
 
   if (block.subjectCategory === 'japanese') {
-    const contents = getPhaseContents('japanese', phase);
     const subjectId = selectedIds.includes('japanese') ? 'japanese' : null;
     if (!subjectId) return tasks;
+    const items = getActiveTextbooksForBlock([subjectId]);
+    if (items.length > 0) {
+      const order: Array<'modern' | 'classical' | 'chinese' | 'general'> = ['modern', 'classical', 'chinese'];
+      const bySub: Record<string, { textbook: Textbook; subjectId: string }[]> = {
+        modern: [],
+        classical: [],
+        chinese: [],
+        general: [],
+      };
+      for (const x of items) {
+        const sub = x.textbook.subCategory ?? 'general';
+        bySub[sub].push(x);
+      }
+      const distributed: { textbook: Textbook; subjectId: string }[] = [];
+      for (let i = 0; i < block.pomodoroCount; i++) {
+        const preferred = order[i % 3];
+        const list = bySub[preferred].length > 0 ? bySub[preferred] : [...bySub.modern, ...bySub.classical, ...bySub.chinese, ...bySub.general];
+        if (list.length === 0) break;
+        const pick = list[i % list.length]!;
+        distributed.push(pick);
+      }
+      const unitOffsetByTb = new Map<string, number>();
+      for (const { textbook, subjectId: sid } of distributed) {
+        const offset = unitOffsetByTb.get(textbook.id) ?? 0;
+        const unitIndex = textbook.completedUnitCount + offset;
+        if (unitIndex >= textbook.totalUnits) continue;
+        unitOffsetByTb.set(textbook.id, offset + 1);
+        tasks.push({
+          id: `${textbook.id}_${targetDate}_${index++}`,
+          subjectId: sid,
+          type: 'new',
+          content: textbookTaskContent(textbook, unitIndex),
+          pomodoroType: getPomoType(sid),
+          pomodoroCount: 1,
+          estimatedMinutes: textbook.minutesPerUnit,
+          completed: false,
+          textbookId: textbook.id,
+          unitIndex,
+        });
+      }
+      return tasks;
+    }
+    const contents = getPhaseContents('japanese', phase);
     for (let i = 0; i < block.pomodoroCount; i++) {
       tasks.push({
         id: `${subjectId}_${targetDate}_${index++}`,
@@ -231,6 +390,30 @@ function blockToTasks(
   if (block.subjectCategory === 'science') {
     const ids = selectedIds.length > 0 ? selectedIds : block.subjectIds?.length ? block.subjectIds : [];
     if (ids.length === 0) return tasks;
+    const items = getActiveTextbooksForBlock(ids);
+    if (items.length > 0) {
+      const distributed = distributeTextbooksToPomodoros(items, block.pomodoroCount, targetDate);
+      const unitOffsetByTb = new Map<string, number>();
+      for (const { textbook, subjectId } of distributed) {
+        const offset = unitOffsetByTb.get(textbook.id) ?? 0;
+        const unitIndex = textbook.completedUnitCount + offset;
+        if (unitIndex >= textbook.totalUnits) continue;
+        unitOffsetByTb.set(textbook.id, offset + 1);
+        tasks.push({
+          id: `${textbook.id}_${targetDate}_${index++}`,
+          subjectId,
+          type: 'new',
+          content: textbookTaskContent(textbook, unitIndex),
+          pomodoroType: getPomoType(subjectId),
+          pomodoroCount: 1,
+          estimatedMinutes: textbook.minutesPerUnit,
+          completed: false,
+          textbookId: textbook.id,
+          unitIndex,
+        });
+      }
+      return tasks;
+    }
     const dayNum = differenceInCalendarDays(parseISO(targetDate), parseISO('2000-01-01'));
     const scienceRotation = useRuleConfigStore.getState().config.generalRules.scienceRotation;
     const contents = getPhaseContents('science', phase);
@@ -253,6 +436,30 @@ function blockToTasks(
   if (block.subjectCategory === 'social') {
     const ids = selectedIds.length > 0 ? selectedIds : block.subjectIds?.length ? block.subjectIds : [];
     if (ids.length === 0) return tasks;
+    const items = getActiveTextbooksForBlock(ids);
+    if (items.length > 0) {
+      const distributed = distributeTextbooksToPomodoros(items, block.pomodoroCount, targetDate);
+      const unitOffsetByTb = new Map<string, number>();
+      for (const { textbook, subjectId } of distributed) {
+        const offset = unitOffsetByTb.get(textbook.id) ?? 0;
+        const unitIndex = textbook.completedUnitCount + offset;
+        if (unitIndex >= textbook.totalUnits) continue;
+        unitOffsetByTb.set(textbook.id, offset + 1);
+        tasks.push({
+          id: `${textbook.id}_${targetDate}_${index++}`,
+          subjectId,
+          type: 'new',
+          content: textbookTaskContent(textbook, unitIndex),
+          pomodoroType: getPomoType(subjectId),
+          pomodoroCount: 1,
+          estimatedMinutes: textbook.minutesPerUnit,
+          completed: false,
+          textbookId: textbook.id,
+          unitIndex,
+        });
+      }
+      return tasks;
+    }
     const dayNum = differenceInCalendarDays(parseISO(targetDate), parseISO('2000-01-01'));
     const socialRotation = useRuleConfigStore.getState().config.generalRules.socialRotation;
     const contents = getPhaseContents('social', phase);
@@ -275,6 +482,30 @@ function blockToTasks(
   if (block.subjectCategory === 'info') {
     const subjectId = selectedIds.includes('info1') ? 'info1' : block.subjectIds?.[0];
     if (!subjectId) return tasks;
+    const items = getActiveTextbooksForBlock([subjectId]);
+    if (items.length > 0) {
+      const distributed = distributeTextbooksToPomodoros(items, block.pomodoroCount, targetDate);
+      const unitOffsetByTb = new Map<string, number>();
+      for (const { textbook, subjectId: sid } of distributed) {
+        const offset = unitOffsetByTb.get(textbook.id) ?? 0;
+        const unitIndex = textbook.completedUnitCount + offset;
+        if (unitIndex >= textbook.totalUnits) continue;
+        unitOffsetByTb.set(textbook.id, offset + 1);
+        tasks.push({
+          id: `${textbook.id}_${targetDate}_${index++}`,
+          subjectId: sid,
+          type: 'new',
+          content: textbookTaskContent(textbook, unitIndex),
+          pomodoroType: getPomoType(sid),
+          pomodoroCount: 1,
+          estimatedMinutes: textbook.minutesPerUnit,
+          completed: false,
+          textbookId: textbook.id,
+          unitIndex,
+        });
+      }
+      return tasks;
+    }
     const contents = getPhaseContents('info', phase);
     const content = contents[0] ?? '情報 学習';
     for (let i = 0; i < block.pomodoroCount; i++) {
@@ -515,77 +746,138 @@ function ensureDailyPractice(
   return [...tasks, ...toAdd];
 }
 
-/** 削減優先順位（小さいほど先に削る）: 情報→社会→理科→国語→数学→英語 */
-const REDUCE_PRIORITY: Record<string, number> = {
-  info: 0,
-  social: 1,
-  science: 2,
-  japanese: 3,
-  math: 4,
-  english: 5,
-  review: 99,
-};
+function getCategoryLabel(category: string): string {
+  const map: Record<string, string> = {
+    english: '英語',
+    math: '数学',
+    japanese: '国語',
+    science: '理科',
+    social: '社会',
+    info: '情報',
+  };
+  return map[category] ?? category;
+}
 
 /**
- * 実際の利用可能時間がテンプレート合計より少ない場合、
- * ブロックを後ろから削減（情報→社会→理科→国語→英語・数学は最低60分まで）
+ * 生活スケジュールから計算した勉強可能時間にゆとりを適用し、
+ * 実際にタスクを配置できる「実効勉強時間」を返す
  */
-function reduceTemplateToFit(
-  template: DayTemplate,
-  actualAvailableMinutes: number
-): DayTemplate {
-  const reviewReserved = template.maxReviewMinutes;
-  const actualForBlocks = Math.max(0, actualAvailableMinutes - reviewReserved);
-  if (template.totalStudyMinutes <= actualForBlocks) {
-    return template;
-  }
-
-  const blocks = template.blocks
-    .filter((b) => b.subjectCategory !== 'review')
-    .map((b) => ({ ...b, durationMinutes: b.durationMinutes, pomodoroCount: b.pomodoroCount }));
-  const sorted = [...blocks].sort((a, b) => {
-    if (b.order !== a.order) return b.order - a.order;
-    return (REDUCE_PRIORITY[a.subjectCategory] ?? 99) - (REDUCE_PRIORITY[b.subjectCategory] ?? 99);
-  });
-
-  let total = blocks.reduce((s, b) => s + b.durationMinutes, 0);
-  const minPomoForEnglishMath = 2;
-  const workMin = 30;
-
-  for (const block of sorted) {
-    if (total <= actualForBlocks) break;
-    const current = blocks.find((b) => b.order === block.order && b.subjectCategory === block.subjectCategory);
-    if (!current || current.durationMinutes <= 0) continue;
-    const isEnglishOrMath = current.subjectCategory === 'english' || current.subjectCategory === 'math';
-    const minPomo = isEnglishOrMath ? minPomoForEnglishMath : 0;
-    if (current.pomodoroCount <= minPomo) continue;
-
-    const removeEntire = total - current.durationMinutes <= actualForBlocks;
-    if (removeEntire && minPomo === 0) {
-      total -= current.durationMinutes;
-      current.durationMinutes = 0;
-      current.pomodoroCount = 0;
-      continue;
-    }
-    const newPomo = Math.max(minPomo, current.pomodoroCount - 1);
-    const newDuration = newPomo * (current.pomodoroWorkMinutes || workMin);
-    total -= current.durationMinutes - newDuration;
-    current.durationMinutes = newDuration;
-    current.pomodoroCount = newPomo;
-  }
-
-  const kept = blocks.filter((b) => b.durationMinutes > 0);
-  const newTotal = kept.reduce((s, b) => s + b.durationMinutes, 0);
+function calcEffectiveMinutes(
+  rawAvailableMinutes: number,
+  bufferRatio: number = 0.15
+): {
+  effectiveMinutes: number;
+  bufferMinutes: number;
+  rawMinutes: number;
+} {
+  const bufferMinutes = Math.ceil(rawAvailableMinutes * bufferRatio);
+  const effectiveMinutes = rawAvailableMinutes - bufferMinutes;
   return {
-    ...template,
-    blocks: kept,
-    totalStudyMinutes: newTotal,
+    effectiveMinutes: Math.max(effectiveMinutes, 0),
+    bufferMinutes,
+    rawMinutes: rawAvailableMinutes,
+  };
+}
+
+/** fitBlocksToTime 用のブロック型（StudyBlock互換） */
+interface FittableBlock {
+  subjectCategory: string;
+  subjectIds: string[];
+  durationMinutes: number;
+  pomodoroCount: number;
+  pomodoroWorkMinutes: number;
+  label: string;
+  order: number;
+}
+
+/**
+ * テンプレートのブロック合計が実効勉強時間を超える場合、
+ * 優先度の低いブロックから削減して収める。
+ */
+function fitBlocksToTime(
+  blocks: FittableBlock[],
+  effectiveMinutes: number,
+  maxReviewMinutes: number
+): { fittedBlocks: FittableBlock[]; reviewMinutes: number; totalMinutes: number; adjustedBlocks: string[] } {
+  const adjustedBlocks: string[] = [];
+  const reviewCap = Math.min(maxReviewMinutes, Math.floor(effectiveMinutes * 0.2));
+  let remaining = effectiveMinutes - reviewCap;
+
+  let activeBlocks = blocks
+    .filter((b) => b.subjectCategory !== 'review')
+    .map((b) => ({ ...b }))
+    .sort((a, b) => a.order - b.order);
+
+  const totalBlockMinutes = activeBlocks.reduce((s, b) => s + b.durationMinutes, 0);
+  if (totalBlockMinutes <= remaining) {
+    return {
+      fittedBlocks: activeBlocks,
+      reviewMinutes: reviewCap,
+      totalMinutes: reviewCap + totalBlockMinutes,
+      adjustedBlocks: [],
+    };
+  }
+
+  const cutOrder = ['info', 'social', 'science', 'japanese'] as const;
+  let fitted = [...activeBlocks];
+
+  for (const category of cutOrder) {
+    const currentTotal = fitted.reduce((s, b) => s + b.durationMinutes, 0);
+    if (currentTotal <= remaining) break;
+    const removed = fitted.filter((b) => b.subjectCategory === category);
+    if (removed.length > 0) {
+      adjustedBlocks.push(`${getCategoryLabel(category)}ブロックを除外しました`);
+      fitted = fitted.filter((b) => b.subjectCategory !== category);
+    }
+  }
+
+  let currentTotal = fitted.reduce((s, b) => s + b.durationMinutes, 0);
+  if (currentTotal > remaining) {
+    const sorted = [...fitted].sort((a, b) => b.order - a.order);
+    for (const block of sorted) {
+      if (currentTotal <= remaining) break;
+      if (block.pomodoroCount > 2) {
+        const reduction = block.pomodoroWorkMinutes;
+        const oldMin = block.durationMinutes;
+        block.durationMinutes -= reduction;
+        block.pomodoroCount -= 1;
+        block.label = `${getCategoryLabel(block.subjectCategory)} ${(block.durationMinutes / 60).toFixed(1)}h`;
+        adjustedBlocks.push(
+          `${getCategoryLabel(block.subjectCategory)}を${oldMin}分→${block.durationMinutes}分に短縮しました`
+        );
+        currentTotal -= reduction;
+      }
+    }
+    fitted = sorted.sort((a, b) => a.order - b.order);
+  }
+
+  currentTotal = fitted.reduce((s, b) => s + b.durationMinutes, 0);
+  if (currentTotal > remaining) {
+    for (const block of fitted) {
+      if (currentTotal <= remaining) break;
+      if (['english', 'math'].includes(block.subjectCategory) && block.pomodoroCount > 2) {
+        const reduction = (block.pomodoroCount - 2) * block.pomodoroWorkMinutes;
+        block.durationMinutes = block.pomodoroWorkMinutes * 2;
+        block.pomodoroCount = 2;
+        block.label = `${getCategoryLabel(block.subjectCategory)} 1h`;
+        adjustedBlocks.push(`${getCategoryLabel(block.subjectCategory)}を2ポモドーロ（60分）に短縮しました`);
+        currentTotal -= reduction;
+      }
+    }
+  }
+
+  const finalTotal = fitted.reduce((s, b) => s + b.durationMinutes, 0);
+  return {
+    fittedBlocks: fitted,
+    reviewMinutes: reviewCap,
+    totalMinutes: reviewCap + finalTotal,
+    adjustedBlocks,
   };
 }
 
 /**
  * 1日の学習計画を生成する（ブロック方式）
- * 実際の利用可能時間とテンプレートを比較し、必要ならブロックを削減する。
+ * 勉強可能時間の85%を実効時間とし、タスク合計が絶対に超えないように保証する。
  */
 export function generateDailyPlan(
   profile: StudentProfile,
@@ -595,27 +887,47 @@ export function generateDailyPlan(
 ): DailyPlan {
   const dayType = determineDayType(profile, events, targetDate);
   const phase = detectPhase(profile.examDate, targetDate);
-  const selectedIds = profile.subjects.map((s) => s.subjectId);
-  let { template } = getAdjustedTemplate(dayType, selectedIds);
+  const rawAvailable = getAvailableMinutesFromSchedule(profile, events, targetDate);
 
-  const actualAvailableMinutes = getAvailableMinutesFromSchedule(profile, events, targetDate);
-  template = reduceTemplateToFit(template, actualAvailableMinutes);
+  const bufferRatio =
+    useRuleConfigStore.getState().config.generalRules.bufferRatio ?? 0.15;
+  const { effectiveMinutes, bufferMinutes } = calcEffectiveMinutes(
+    rawAvailable,
+    bufferRatio
+  );
+
+  const selectedIds = profile.subjects.map((s) => s.subjectId);
+  const { template } = getAdjustedTemplate(dayType, selectedIds);
+
+  const blockCopies: FittableBlock[] = template.blocks.map((b) => ({
+    ...b,
+    subjectIds: b.subjectIds ?? [],
+  }));
+  const { fittedBlocks, reviewMinutes, adjustedBlocks } = fitBlocksToTime(
+    blockCopies,
+    effectiveMinutes,
+    template.maxReviewMinutes
+  );
 
   const reviewTasks = generateReviewTasks(completedTasks, targetDate);
-  const cappedReviewTasks = capReviewTasks(reviewTasks, template.maxReviewMinutes);
+  const cappedReviewTasks = capReviewTasks(reviewTasks, reviewMinutes);
 
   const blockTasks: StudyTask[] = [];
   let taskIndex = 0;
-  for (const block of template.blocks) {
-    if (block.subjectCategory === 'review') continue;
-    const tasks = blockToTasks(block, profile.subjects, phase.name, targetDate, taskIndex);
+  for (const block of fittedBlocks) {
+    const tasks = blockToTasks(
+      block as StudyBlock,
+      profile.subjects,
+      phase.name,
+      targetDate,
+      taskIndex
+    );
     blockTasks.push(...tasks);
     taskIndex += tasks.length;
   }
 
   const allTasks = [...cappedReviewTasks, ...blockTasks];
-  const totalAvailable = template.totalStudyMinutes + template.maxReviewMinutes;
-  const finalTasks = capTasksToAvailable(allTasks, totalAvailable);
+  const finalTasks = capTasksToAvailable(allTasks, effectiveMinutes);
 
   return {
     date: targetDate,
@@ -623,9 +935,13 @@ export function generateDailyPlan(
     isClubDay: dayType === 'weekday_club' || dayType === 'summer_club',
     isMatchDay: dayType === 'match_day',
     isEventDay: dayType === 'event_day',
-    availableMinutes: actualAvailableMinutes,
+    availableMinutes: effectiveMinutes,
     tasks: finalTasks,
     completionRate: 0,
+    rawAvailableMinutes: rawAvailable,
+    bufferMinutes,
+    effectiveMinutes,
+    adjustedBlocks: adjustedBlocks.length > 0 ? adjustedBlocks : undefined,
   };
 }
 

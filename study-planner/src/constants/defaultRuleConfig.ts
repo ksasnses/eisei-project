@@ -123,6 +123,7 @@ export const DEFAULT_RULE_CONFIG: ScheduleRuleConfig = {
     scienceRotation: true,
     socialRotation: true,
     mathAlternate: true,
+    bufferRatio: 0.15,
   },
   updatedAt: new Date().toISOString(),
 };

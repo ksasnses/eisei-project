@@ -56,7 +56,64 @@ export interface SelectedSubject {
   currentScore: number;
   targetScore: number;
   difficulty: 1 | 2 | 3 | 4 | 5;
-  textbooks: string[];
+  /** @deprecated 後方互換用。教材は curriculumStore を参照 */
+  textbooks?: string[];
+}
+
+/** 教材の種類 */
+export type TextbookCategory =
+  | 'vocabulary'      // 単語帳
+  | 'grammar'         // 文法書・文法問題集
+  | 'reading'         // 読解問題集
+  | 'listening'       // リスニング教材
+  | 'textbook'        // 教科書
+  | 'reference'       // 参考書
+  | 'workbook'        // 問題集・ワーク
+  | 'one_by_one'      // 一問一答
+  | 'past_exam'       // 過去問・予想問題集
+  | 'other';          // その他
+
+/** 単位ラベル（Section, 章, 回 等） */
+export type UnitLabel =
+  | 'section'
+  | 'chapter'
+  | 'session'
+  | 'unit'
+  | 'lesson'
+  | 'example'
+  | 'question'
+  | 'page10'
+  | 'custom';
+
+/** 教材（ユーザー登録） */
+export interface Textbook {
+  id: string;
+  name: string;
+  subjectId: string;
+  totalUnits: number;
+  unitLabel: UnitLabel;
+  customUnitLabel?: string;  // unitLabel='custom' のとき
+  minutesPerUnit: number;
+  category: TextbookCategory;
+  subCategory?: 'modern' | 'classical' | 'chinese' | 'general';  // 国語のみ
+  status: 'active' | 'archived' | 'paused';
+  priority: number;  // 1=最高
+  memo?: string;
+  /** 完了したユニット数（0〜totalUnits） */
+  completedUnitCount: number;
+  createdAt: string;
+}
+
+/** テンプレート（プリセット）用の教材定義 */
+export interface TextbookPreset {
+  name: string;
+  subjectCategory: 'english' | 'math' | 'japanese' | 'science' | 'social' | 'info';
+  applicableSubjectIds: string[];
+  category: TextbookCategory;
+  totalUnits: number;
+  unitLabel: UnitLabel;
+  customUnitLabel?: string;
+  minutesPerUnit: number;
 }
 
 /** 得点履歴（模試等） */
@@ -131,6 +188,9 @@ export interface StudyTask {
   completed: boolean;
   actualMinutes?: number;
   completedAt?: string;
+  /** 教材ベースのタスクの場合 */
+  textbookId?: string;
+  unitIndex?: number;
 }
 
 export type PomodoroType =
@@ -149,6 +209,14 @@ export interface DailyPlan {
   availableMinutes: number;
   tasks: StudyTask[];
   completionRate: number;
+  /** 生の勉強可能時間（ゆとり適用前） */
+  rawAvailableMinutes?: number;
+  /** ゆとり分（分） */
+  bufferMinutes?: number;
+  /** 実効勉強時間（ゆとり適用後）= availableMinutes */
+  effectiveMinutes?: number;
+  /** 削減があった場合のメッセージ（例: ['理科ブロックを除外', '国語を90分→60分に短縮']） */
+  adjustedBlocks?: string[];
 }
 
 export type PhaseName = '基礎期' | '実践期' | '直前期';
@@ -266,6 +334,8 @@ export interface ScheduleRuleConfig {
     scienceRotation: boolean;
     socialRotation: boolean;
     mathAlternate: boolean;
+    /** ゆとり率（0.0〜0.5）デフォルト: 0.15（15%） */
+    bufferRatio: number;
   };
   updatedAt: string;
   /** 変更履歴（直近10件） */

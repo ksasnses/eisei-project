@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   BarChart,
   Bar,
@@ -12,6 +12,7 @@ import {
 } from 'recharts';
 import { useStudentStore } from '../stores/studentStore';
 import { useStudyStore } from '../stores/studyStore';
+import { useCurriculumStore } from '../stores/curriculumStore';
 import { getSubjectById } from '../constants/subjects';
 import { EXAM_TEMPLATES } from '../constants/examTemplates';
 import { formatDateForInput } from '../utils/dateUtils';
@@ -48,6 +49,8 @@ export function SettingsPage() {
   const resetAllStudent = useStudentStore((s) => s.resetAll);
   const resetAllStudy = useStudyStore((s) => s.resetAll);
   const generateDailyPlan = useStudyStore((s) => s.generateDailyPlan);
+  const getTextbooks = useCurriculumStore((s) => s.getTextbooks);
+  const resetAllCurriculum = useCurriculumStore((s) => s.resetAll);
 
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showImportError, setShowImportError] = useState<string | null>(null);
@@ -156,6 +159,7 @@ export function SettingsPage() {
   const handleReset = () => {
     resetAllStudy();
     resetAllStudent();
+    resetAllCurriculum();
     setShowResetConfirm(false);
     navigate('/wizard', { replace: true });
   };
@@ -163,8 +167,9 @@ export function SettingsPage() {
   const handleExport = () => {
     const student = useStudentStore.getState();
     const study = useStudyStore.getState();
+    const curriculum = useCurriculumStore.getState();
     const data = {
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       student: {
         profile: student.profile,
@@ -177,6 +182,9 @@ export function SettingsPage() {
         reviewQueue: study.reviewQueue,
         streakDays: study.streakDays,
         totalPomodoros: study.totalPomodoros,
+      },
+      curriculum: {
+        textbooksBySubject: curriculum.textbooksBySubject,
       },
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -215,6 +223,11 @@ export function SettingsPage() {
             totalPomodoros: data.study.totalPomodoros ?? 0,
           });
         }
+        if (data.curriculum?.textbooksBySubject) {
+          useCurriculumStore.setState({
+            textbooksBySubject: data.curriculum.textbooksBySubject,
+          });
+        }
         e.target.value = '';
       } catch (err) {
         setShowImportError(err instanceof Error ? err.message : '読み込みに失敗しました');
@@ -234,6 +247,40 @@ export function SettingsPage() {
 
   const formatStudyTime = (minutes: number) =>
     `${Math.floor(minutes / 60)}時間${minutes % 60 ? minutes % 60 + '分' : ''}`;
+
+  const textbookStats = useMemo(() => {
+    if (!profile) return { bySubject: [] as { name: string; subjectId: string; textbooks: { name: string; progress: string; status: string }[] }[], totalCount: 0, totalRemaining: 0 };
+    const bySubject: { name: string; subjectId: string; textbooks: { name: string; progress: string; status: string }[] }[] = [];
+    let totalCount = 0;
+    let totalRemaining = 0;
+    for (const s of profile.subjects) {
+      const sub = getSubjectById(s.subjectId);
+      const list = getTextbooks(s.subjectId).sort((a, b) => a.priority - b.priority);
+      if (list.length === 0) continue;
+      totalCount += list.length;
+      const items = list.map((t) => {
+        const remaining = t.totalUnits - t.completedUnitCount;
+        totalRemaining += remaining;
+        const pct = t.totalUnits > 0 ? Math.round((t.completedUnitCount / t.totalUnits) * 100) : 0;
+        return {
+          name: t.name,
+          progress: `${t.completedUnitCount}/${t.totalUnits} (${pct}%)`,
+          status: t.status === 'paused' ? '⏸️ 一時停止' : '🟢 進行中',
+        };
+      });
+      bySubject.push({
+        name: sub?.name ?? s.subjectId,
+        subjectId: s.subjectId,
+        textbooks: items,
+      });
+    }
+    return { bySubject, totalCount, totalRemaining };
+  }, [profile, getTextbooks]);
+
+  const subjectsWithoutTextbooks = useMemo(() => {
+    if (!profile) return [];
+    return profile.subjects.filter((s) => getTextbooks(s.subjectId).length === 0);
+  }, [profile, getTextbooks]);
 
   return (
     <div className="mx-auto max-w-3xl px-4 pb-24 pt-4" style={{ color: '#0f172a' }}>
@@ -798,6 +845,70 @@ export function SettingsPage() {
         {ruleConfigToast && (
           <div className="mt-4 rounded-lg bg-green-100 px-4 py-2 text-sm text-green-800">
             設定を保存しました。スケジュールが再生成されます。
+          </div>
+        )}
+      </section>
+
+      {/* 登録教材一覧 */}
+      <section className="mb-8 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="mb-4 text-lg font-semibold text-slate-800">
+          📚 登録教材一覧
+        </h2>
+        {textbookStats.bySubject.length > 0 ? (
+          <>
+            {textbookStats.bySubject.map(({ name, subjectId, textbooks }) => (
+              <div key={subjectId} className="mb-4 last:mb-0">
+                <h3 className="mb-2 font-medium text-slate-700">
+                  {name}（{textbooks.length}教材）
+                </h3>
+                <ul className="space-y-2">
+                  {textbooks.map((tb, i) => (
+                    <li
+                      key={i}
+                      className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2 text-sm"
+                    >
+                      <span className="text-slate-800">
+                        {i + 1}. {tb.name} — {tb.progress} {tb.status}
+                      </span>
+                      <Link
+                        to={`/subjects/${subjectId}`}
+                        className="text-indigo-600 hover:text-indigo-700"
+                      >
+                        編集
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+            <div className="mt-4 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
+              全教材の合計: {textbookStats.totalCount}教材、残り{textbookStats.totalRemaining}ユニット
+            </div>
+          </>
+        ) : (
+          <p className="text-slate-600">登録されている教材はありません。</p>
+        )}
+        {subjectsWithoutTextbooks.length > 0 && (
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <p className="mb-2 text-sm font-medium text-amber-800">
+              ⚠️ 以下の科目は教材が未登録です
+            </p>
+            <ul className="space-y-1">
+              {subjectsWithoutTextbooks.map((s) => {
+                const sub = getSubjectById(s.subjectId);
+                return (
+                  <li key={s.subjectId} className="flex items-center justify-between text-sm">
+                    <span className="text-amber-900">{sub?.name ?? s.subjectId}</span>
+                    <Link
+                      to={`/subjects/${s.subjectId}`}
+                      className="font-medium text-amber-700 hover:text-amber-800"
+                    >
+                      登録する
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         )}
       </section>

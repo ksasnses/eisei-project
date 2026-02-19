@@ -277,6 +277,27 @@ export function CalendarPage() {
                   勉強可能 {availableHours}h
                 </div>
 
+                {/* タスク vs ゆとりのプログレスバー */}
+                {plan && (() => {
+                  const raw = plan.rawAvailableMinutes ?? plan.availableMinutes ?? 0;
+                  if (raw <= 0) return null;
+                  const taskTotal = plan.tasks.reduce((s, t) => s + t.estimatedMinutes, 0);
+                  const buffer = plan.bufferMinutes ?? 0;
+                  const taskPct = Math.min(100, (taskTotal / raw) * 100);
+                  const bufferPct = Math.min(100 - taskPct, (buffer / raw) * 100);
+                  return (
+                    <div
+                      className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200"
+                      title={`タスク: ${taskTotal}分 / ゆとり: ${buffer}分`}
+                    >
+                      <div className="flex h-full">
+                        <div className="bg-blue-600" style={{ width: `${taskPct}%` }} />
+                        <div className="bg-blue-300" style={{ width: `${bufferPct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* テンプレートの科目ブロックを色分け表示（高さは時間に比例） */}
                 <div className="mt-2 h-[140px] space-y-1 overflow-y-auto">
                   {studyBlocks.length > 0 ? (

@@ -302,7 +302,7 @@ export function DashboardPage() {
                 {dayDescription}
               </p>
             )}
-            <p className="mb-4 text-sm text-slate-500">
+            <p className="mb-2 text-sm text-slate-500">
               {plan != null && (
                 <>
                   {isClubDay && '今日は部活あり → '}
@@ -310,6 +310,107 @@ export function DashboardPage() {
                 </>
               )}
             </p>
+
+            {/* 時間配分サマリー */}
+            {plan != null && plan.rawAvailableMinutes != null && (
+              <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="mb-2 text-sm font-medium text-slate-700">
+                  📊 今日の時間配分
+                </div>
+                <div className="space-y-1.5 text-sm">
+                  <div>
+                    <div className="flex justify-between text-slate-600">
+                      <span>勉強可能時間</span>
+                      <span className="tabular-nums">
+                        {Math.floor((plan.rawAvailableMinutes ?? 0) / 60)}h
+                        {(plan.rawAvailableMinutes ?? 0) % 60 ? `${(plan.rawAvailableMinutes ?? 0) % 60}m` : ''}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 h-2 overflow-hidden rounded-full bg-slate-200">
+                      <div
+                        className="h-full rounded-full bg-slate-300"
+                        style={{ width: '100%' }}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-slate-600">
+                      <span>├ 実効時間</span>
+                      <span className="tabular-nums">
+                        {Math.floor((plan.effectiveMinutes ?? plan.availableMinutes) / 60)}h
+                        {((plan.effectiveMinutes ?? plan.availableMinutes) % 60)
+                          ? `${(plan.effectiveMinutes ?? plan.availableMinutes) % 60}m`
+                          : ''}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 h-2 overflow-hidden rounded-full bg-slate-200">
+                      <div
+                        className="h-full rounded-full bg-blue-400"
+                        style={{
+                          width: `${plan.rawAvailableMinutes ? Math.min(100, ((plan.effectiveMinutes ?? plan.availableMinutes) / plan.rawAvailableMinutes) * 100) : 100}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-slate-600">
+                      <span>├ ゆとり</span>
+                      <span className="tabular-nums">
+                        {(plan.bufferMinutes ?? 0)}m
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-slate-600">
+                      <span>└ タスク合計</span>
+                      <span className="tabular-nums">
+                        {tasks.reduce((s, t) => s + t.estimatedMinutes, 0)}m
+                      </span>
+                    </div>
+                    <div className="mt-0.5 h-2 overflow-hidden rounded-full bg-slate-200">
+                      <div
+                        className="h-full rounded-full bg-blue-600"
+                        style={{
+                          width: `${plan.effectiveMinutes ?? plan.availableMinutes
+                            ? Math.min(100, (tasks.reduce((s, t) => s + t.estimatedMinutes, 0) / (plan.effectiveMinutes ?? plan.availableMinutes)) * 100)
+                            : 0}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+                {(() => {
+                  const eff = plan.effectiveMinutes ?? plan.availableMinutes;
+                  const taskTotal = tasks.reduce((s, t) => s + t.estimatedMinutes, 0);
+                  const margin = eff > 0 ? eff - taskTotal : 0;
+                  if (margin > 0) {
+                    return (
+                      <p className="mt-2 text-xs text-green-700">
+                        ※ {margin}分のゆとりがあります
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+            )}
+
+            {/* ブロック調整の通知 */}
+            {plan != null && plan.adjustedBlocks && plan.adjustedBlocks.length > 0 && (
+              <div className="mb-4 rounded-lg border-l-4 border-amber-400 bg-amber-50 p-3">
+                <p className="text-sm font-medium text-amber-900">
+                  ℹ️ 今日は時間が限られているため、以下の調整をしました：
+                </p>
+                <ul className="mt-1 list-inside list-disc text-sm text-amber-800">
+                  {plan.adjustedBlocks.map((msg, i) => (
+                    <li key={i}>{msg}</li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-xs text-amber-700">
+                  ※ 土日に集中して取り組みましょう
+                </p>
+              </div>
+            )}
 
             {tasks.length === 0 && plan == null && profile && (
               <p className="py-4 text-center text-slate-500">
