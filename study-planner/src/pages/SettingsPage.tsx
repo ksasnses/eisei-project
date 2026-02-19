@@ -17,6 +17,7 @@ import { EXAM_TEMPLATES } from '../constants/examTemplates';
 import { formatDateForInput } from '../utils/dateUtils';
 import { getStudyMinutesSummary } from '../utils/scheduleUtils';
 import { getDayTemplate } from '../constants/dayTemplates';
+import { RuleConfigEditor } from '../components/RuleConfigEditor';
 
 const TIME_OPTIONS = (() => {
   const opts: string[] = [];
@@ -51,11 +52,18 @@ export function SettingsPage() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showImportError, setShowImportError] = useState<string | null>(null);
   const [scheduleToast, setScheduleToast] = useState(false);
+  const [ruleConfigToast, setRuleConfigToast] = useState(false);
   useEffect(() => {
     if (!scheduleToast) return;
     const t = setTimeout(() => setScheduleToast(false), 3000);
     return () => clearTimeout(t);
   }, [scheduleToast]);
+
+  useEffect(() => {
+    if (!ruleConfigToast) return;
+    const t = setTimeout(() => setRuleConfigToast(false), 3000);
+    return () => clearTimeout(t);
+  }, [ruleConfigToast]);
 
   const totalCurrent = useMemo(
     () =>
@@ -774,6 +782,24 @@ export function SettingsPage() {
             );
           })()}
         </div>
+      </section>
+
+      {/* 学習ルール設定 */}
+      <section className="mb-8 rounded-xl border border-indigo-100 bg-white p-4 shadow-sm">
+        <h2 className="mb-4 text-lg font-semibold text-slate-800">
+          学習ルール設定
+        </h2>
+        <p className="mb-4 text-sm text-slate-600">
+          曜日別のスケジュール・フェーズ別学習内容・復習ルールなどを、コードを触らずに変更できます。
+        </p>
+        <RuleConfigEditor
+          onSaveToast={() => setRuleConfigToast(true)}
+        />
+        {ruleConfigToast && (
+          <div className="mt-4 rounded-lg bg-green-100 px-4 py-2 text-sm text-green-800">
+            設定を保存しました。スケジュールが再生成されます。
+          </div>
+        )}
       </section>
 
       {/* データのエクスポート/インポート */}

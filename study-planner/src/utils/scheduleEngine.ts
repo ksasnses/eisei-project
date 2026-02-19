@@ -17,6 +17,7 @@ import type { DayType } from '../types';
 import type { PhaseName } from '../types';
 import { getSubjectById } from '../constants/subjects';
 import { getPomodoroConfig } from '../constants/pomodoroConfig';
+import { useRuleConfigStore } from '../stores/ruleConfigStore';
 import { detectPhase } from './phaseDetector';
 import { type SubjectTimeAllocation } from './timeAllocation';
 import { generateReviewTasks } from './forgettingCurve';
@@ -106,6 +107,18 @@ function toPomodoroType(
   return 'thinking';
 }
 
+function getPhaseContents(
+  subjectCategory: string,
+  phase: PhaseName
+): string[] {
+  const pc = useRuleConfigStore
+    .getState()
+    .config.phaseContents.find(
+      (p) => p.subjectCategory === subjectCategory && p.phase === phase
+    );
+  return pc?.contents ?? [];
+}
+
 /**
  * StudyBlock を具体的な StudyTask の配列に変換する
  */
@@ -133,12 +146,7 @@ function blockToTasks(
     const hasR = selectedIds.includes('eng_r');
     const hasL = selectedIds.includes('eng_l');
     if (!hasR && !hasL) return [];
-    const contents =
-      phase === '基礎期'
-        ? ['英単語暗記', '英文法・精読', 'リスニング基礎練習']
-        : phase === '実践期'
-          ? ['共テ形式 語彙問題', '共テ形式 長文読解', '共テ形式 リスニング演習']
-          : ['過去問演習（リーディング）', '速読＋時間配分練習', '過去問演習（リスニング）'];
+    const contents = getPhaseContents('english', phase);
     const subjectIds =
       hasR && hasL
         ? ['eng_r', 'eng_l', 'eng_l']
@@ -168,17 +176,15 @@ function blockToTasks(
     const has2bc = selectedIds.includes('math2bc');
     const dayNum = differenceInCalendarDays(parseISO(targetDate), parseISO('2000-01-01'));
     const isOdd = dayNum % 2 === 1;
-    const contents =
-      phase === '基礎期'
-        ? ['基本問題演習', '基本問題演習', '基本問題演習']
-        : phase === '実践期'
-          ? ['共テ形式演習（時間を測る）', '共テ形式演習（時間を測る）', '共テ形式演習（時間を測る）']
-          : ['過去問演習', '過去問演習', '過去問演習'];
+    const mathAlternate = useRuleConfigStore.getState().config.generalRules.mathAlternate;
+    const contents = getPhaseContents('math', phase);
     let subIds: string[];
     if (has1a && has2bc) {
-      subIds = isOdd
-        ? ['math1a', 'math1a', 'math2bc']
-        : ['math1a', 'math2bc', 'math2bc'];
+      subIds = mathAlternate
+        ? isOdd
+          ? ['math1a', 'math1a', 'math2bc']
+          : ['math1a', 'math2bc', 'math2bc']
+        : ['math1a', 'math2bc', 'math1a'];
     } else if (has1a) {
       subIds = ['math1a', 'math1a', 'math1a'];
     } else if (has2bc) {
@@ -204,12 +210,7 @@ function blockToTasks(
   }
 
   if (block.subjectCategory === 'japanese') {
-    const contents =
-      phase === '基礎期'
-        ? ['現代文 読解基礎', '古文単語・文法', '漢文 句法暗記']
-        : phase === '実践期'
-          ? ['共テ形式 現代文演習', '共テ形式 古文演習', '共テ形式 漢文演習']
-          : ['過去問 現代文', '過去問 古文', '過去問 漢文'];
+    const contents = getPhaseContents('japanese', phase);
     const subjectId = selectedIds.includes('japanese') ? 'japanese' : null;
     if (!subjectId) return tasks;
     for (let i = 0; i < block.pomodoroCount; i++) {
@@ -231,14 +232,10 @@ function blockToTasks(
     const ids = selectedIds.length > 0 ? selectedIds : block.subjectIds?.length ? block.subjectIds : [];
     if (ids.length === 0) return tasks;
     const dayNum = differenceInCalendarDays(parseISO(targetDate), parseISO('2000-01-01'));
-    const contents =
-      phase === '基礎期'
-        ? ['基本問題演習', '基本問題演習']
-        : phase === '実践期'
-          ? ['共テ形式演習', '共テ形式演習']
-          : ['過去問演習', '過去問演習'];
+    const scienceRotation = useRuleConfigStore.getState().config.generalRules.scienceRotation;
+    const contents = getPhaseContents('science', phase);
     for (let i = 0; i < block.pomodoroCount; i++) {
-      const subjectId = ids[(dayNum + i) % ids.length]!;
+      const subjectId = scienceRotation ? ids[(dayNum + i) % ids.length]! : ids[i % ids.length]!;
       tasks.push({
         id: `${subjectId}_${targetDate}_${index++}`,
         subjectId,
@@ -257,14 +254,10 @@ function blockToTasks(
     const ids = selectedIds.length > 0 ? selectedIds : block.subjectIds?.length ? block.subjectIds : [];
     if (ids.length === 0) return tasks;
     const dayNum = differenceInCalendarDays(parseISO(targetDate), parseISO('2000-01-01'));
-    const contents =
-      phase === '基礎期'
-        ? ['教科書確認＋一問一答', '教科書確認＋一問一答']
-        : phase === '実践期'
-          ? ['共テ形式演習', '共テ形式演習']
-          : ['過去問＋暗記最終確認', '過去問＋暗記最終確認'];
+    const socialRotation = useRuleConfigStore.getState().config.generalRules.socialRotation;
+    const contents = getPhaseContents('social', phase);
     for (let i = 0; i < block.pomodoroCount; i++) {
-      const subjectId = ids[(dayNum + i) % ids.length]!;
+      const subjectId = socialRotation ? ids[(dayNum + i) % ids.length]! : ids[i % ids.length]!;
       tasks.push({
         id: `${subjectId}_${targetDate}_${index++}`,
         subjectId,
@@ -282,12 +275,8 @@ function blockToTasks(
   if (block.subjectCategory === 'info') {
     const subjectId = selectedIds.includes('info1') ? 'info1' : block.subjectIds?.[0];
     if (!subjectId) return tasks;
-    const content =
-      phase === '基礎期'
-        ? '基礎知識（2進数、論理回路等）'
-        : phase === '実践期'
-          ? 'プログラミング問題演習'
-          : '予想問題演習';
+    const contents = getPhaseContents('info', phase);
+    const content = contents[0] ?? '情報 学習';
     for (let i = 0; i < block.pomodoroCount; i++) {
       tasks.push({
         id: `${subjectId}_${targetDate}_${index++}`,

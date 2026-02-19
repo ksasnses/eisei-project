@@ -5,22 +5,14 @@
 
 import { addDays, parseISO } from 'date-fns';
 import type { StudyTask } from '../types';
+import { useRuleConfigStore } from '../stores/ruleConfigStore';
 
-const MAX_DAILY_REVIEW_MINUTES = 45;
+function getIntervals(): number[] {
+  return useRuleConfigStore.getState().config.forgettingCurve.intervals;
+}
 
-/** 復習間隔（日） */
-const INTERVALS = {
-  memorization_heavy: [1, 3, 7, 14, 30],
-  understanding_heavy: [3, 7, 14, 30],
-  speed_training: [7, 14],
-} as const;
-
-function getIntervalsForType(
-  pomodoroType: StudyTask['pomodoroType']
-): readonly number[] {
-  if (pomodoroType === 'memorization') return INTERVALS.memorization_heavy;
-  if (pomodoroType === 'processing') return INTERVALS.speed_training;
-  return INTERVALS.understanding_heavy;
+function getMaxDailyReviewMinutes(): number {
+  return useRuleConfigStore.getState().config.forgettingCurve.maxDailyReviewMinutes;
 }
 
 function getSeriesKey(task: StudyTask): string {
@@ -40,13 +32,17 @@ function getCompletedReviewNumbers(completedTasks: StudyTask[]): Map<string, Set
   return map;
 }
 
-/** 3回連続完了で卒業しているか */
+/** 何回連続完了で卒業するか（config から取得） */
+function getGraduationCount(): number {
+  return useRuleConfigStore.getState().config.forgettingCurve.graduationCount;
+}
+
 function isGraduated(completedNumbers: Set<number>): boolean {
-  return (
-    completedNumbers.has(1) &&
-    completedNumbers.has(2) &&
-    completedNumbers.has(3)
-  );
+  const n = getGraduationCount();
+  for (let i = 1; i <= n; i++) {
+    if (!completedNumbers.has(i)) return false;
+  }
+  return true;
 }
 
 /**
@@ -68,11 +64,13 @@ export function generateReviewTasks(
     (t) => t.completed && t.completedAt && !t.reviewSource
   );
 
+  const intervals = getIntervals();
+  const maxDailyReviewMinutes = getMaxDailyReviewMinutes();
+
   for (const orig of completedOriginals) {
     const originalDateStr = orig.completedAt!.slice(0, 10);
     const originalDate = parseISO(originalDateStr);
     originalDate.setHours(0, 0, 0, 0);
-    const intervals = getIntervalsForType(orig.pomodoroType);
     const seriesKey = `${orig.subjectId}:${originalDateStr}`;
     const completedSet = completedReviews.get(seriesKey) ?? new Set();
 
@@ -92,7 +90,7 @@ export function generateReviewTasks(
           : orig.pomodoroType === 'processing'
             ? 25
             : 30;
-      if (totalMinutes + workMinutes > MAX_DAILY_REVIEW_MINUTES) break;
+      if (totalMinutes + workMinutes > maxDailyReviewMinutes) break;
 
       const reviewTask: StudyTask = {
         id: `review-${orig.subjectId}-${originalDateStr}-${reviewNumber}-${currentDate}`,

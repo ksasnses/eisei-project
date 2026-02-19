@@ -1,0 +1,128 @@
+import type { ScheduleRuleConfig } from '../types';
+
+function makeId(prefix: string, index: number): string {
+  return `${prefix}_${index}`;
+}
+
+export const DEFAULT_RULE_CONFIG: ScheduleRuleConfig = {
+  version: 1,
+  dayTemplates: [
+    {
+      dayType: 'weekday_club',
+      displayName: '平日・部活あり',
+      icon: '🎾',
+      description: '英語＋数学に集中',
+      maxReviewMinutes: 20,
+      blocks: [
+        { id: makeId('wc', 0), subjectCategory: 'english', durationMinutes: 90, pomodoroWorkMinutes: 30, pomodoroBreakMinutes: 5, order: 1, label: '英語 1.5h', enabled: true },
+        { id: makeId('wc', 1), subjectCategory: 'math', durationMinutes: 90, pomodoroWorkMinutes: 30, pomodoroBreakMinutes: 5, order: 2, label: '数学 1.5h', enabled: true },
+      ],
+    },
+    {
+      dayType: 'weekday_no_club',
+      displayName: '平日・部活なし',
+      icon: '📚',
+      description: '英語＋数学＋国語',
+      maxReviewMinutes: 30,
+      blocks: [
+        { id: makeId('wnc', 0), subjectCategory: 'english', durationMinutes: 90, pomodoroWorkMinutes: 30, pomodoroBreakMinutes: 5, order: 1, label: '英語 1.5h', enabled: true },
+        { id: makeId('wnc', 1), subjectCategory: 'math', durationMinutes: 90, pomodoroWorkMinutes: 30, pomodoroBreakMinutes: 5, order: 2, label: '数学 1.5h', enabled: true },
+        { id: makeId('wnc', 2), subjectCategory: 'japanese', durationMinutes: 90, pomodoroWorkMinutes: 30, pomodoroBreakMinutes: 5, order: 3, label: '国語 1.5h', enabled: true },
+      ],
+    },
+    {
+      dayType: 'weekend_holiday',
+      displayName: '土日・休日',
+      icon: '📅',
+      description: '全科目バランス学習',
+      maxReviewMinutes: 30,
+      blocks: [
+        { id: makeId('wh', 0), subjectCategory: 'english', durationMinutes: 90, pomodoroWorkMinutes: 30, pomodoroBreakMinutes: 5, order: 1, label: '英語 1.5h', enabled: true },
+        { id: makeId('wh', 1), subjectCategory: 'math', durationMinutes: 90, pomodoroWorkMinutes: 30, pomodoroBreakMinutes: 5, order: 2, label: '数学 1.5h', enabled: true },
+        { id: makeId('wh', 2), subjectCategory: 'japanese', durationMinutes: 90, pomodoroWorkMinutes: 30, pomodoroBreakMinutes: 5, order: 3, label: '国語 1.5h', enabled: true },
+        { id: makeId('wh', 3), subjectCategory: 'science', durationMinutes: 60, pomodoroWorkMinutes: 30, pomodoroBreakMinutes: 5, order: 4, label: '理科 1h', enabled: true },
+        { id: makeId('wh', 4), subjectCategory: 'social', durationMinutes: 60, pomodoroWorkMinutes: 30, pomodoroBreakMinutes: 5, order: 5, label: '社会 1h', enabled: true },
+      ],
+    },
+    {
+      dayType: 'summer_club',
+      displayName: '夏休み・部活あり',
+      icon: '🌻🎾',
+      description: '全科目（部活あり）',
+      maxReviewMinutes: 30,
+      blocks: [
+        { id: makeId('sc', 0), subjectCategory: 'english', durationMinutes: 90, pomodoroWorkMinutes: 30, pomodoroBreakMinutes: 5, order: 1, label: '英語 1.5h', enabled: true },
+        { id: makeId('sc', 1), subjectCategory: 'math', durationMinutes: 90, pomodoroWorkMinutes: 30, pomodoroBreakMinutes: 5, order: 2, label: '数学 1.5h', enabled: true },
+        { id: makeId('sc', 2), subjectCategory: 'japanese', durationMinutes: 90, pomodoroWorkMinutes: 30, pomodoroBreakMinutes: 5, order: 3, label: '国語 1.5h', enabled: true },
+        { id: makeId('sc', 3), subjectCategory: 'science', durationMinutes: 60, pomodoroWorkMinutes: 30, pomodoroBreakMinutes: 5, order: 4, label: '理科 1h', enabled: true },
+        { id: makeId('sc', 4), subjectCategory: 'social', durationMinutes: 60, pomodoroWorkMinutes: 30, pomodoroBreakMinutes: 5, order: 5, label: '社会 1h', enabled: true },
+      ],
+    },
+    {
+      dayType: 'summer_no_club',
+      displayName: '夏休み・部活なし',
+      icon: '🌻',
+      description: '全科目じっくり',
+      maxReviewMinutes: 30,
+      blocks: [
+        { id: makeId('snc', 0), subjectCategory: 'english', durationMinutes: 90, pomodoroWorkMinutes: 30, pomodoroBreakMinutes: 5, order: 1, label: '英語 1.5h', enabled: true },
+        { id: makeId('snc', 1), subjectCategory: 'math', durationMinutes: 90, pomodoroWorkMinutes: 30, pomodoroBreakMinutes: 5, order: 2, label: '数学 1.5h', enabled: true },
+        { id: makeId('snc', 2), subjectCategory: 'japanese', durationMinutes: 90, pomodoroWorkMinutes: 30, pomodoroBreakMinutes: 5, order: 3, label: '国語 1.5h', enabled: true },
+        { id: makeId('snc', 3), subjectCategory: 'science', durationMinutes: 90, pomodoroWorkMinutes: 30, pomodoroBreakMinutes: 5, order: 4, label: '理科 1.5h', enabled: true },
+        { id: makeId('snc', 4), subjectCategory: 'social', durationMinutes: 90, pomodoroWorkMinutes: 30, pomodoroBreakMinutes: 5, order: 5, label: '社会 1.5h', enabled: true },
+        { id: makeId('snc', 5), subjectCategory: 'info', durationMinutes: 30, pomodoroWorkMinutes: 30, pomodoroBreakMinutes: 5, order: 6, label: '情報 30分', enabled: true },
+      ],
+    },
+    {
+      dayType: 'match_day',
+      displayName: '試合日',
+      icon: '🏆',
+      description: '軽めの暗記確認のみ',
+      maxReviewMinutes: 60,
+      blocks: [],
+    },
+    {
+      dayType: 'event_day',
+      displayName: 'イベント日',
+      icon: '🎌',
+      description: '最低限の復習のみ',
+      maxReviewMinutes: 30,
+      blocks: [],
+    },
+  ],
+  phaseContents: [
+    { subjectCategory: 'english', phase: '基礎期', contents: ['英単語暗記', '英文法・精読', 'リスニング基礎練習'] },
+    { subjectCategory: 'english', phase: '実践期', contents: ['共テ形式 語彙問題', '共テ形式 長文読解', '共テ形式 リスニング演習'] },
+    { subjectCategory: 'english', phase: '直前期', contents: ['過去問演習（リーディング）', '速読＋時間配分練習', '過去問演習（リスニング）'] },
+    { subjectCategory: 'math', phase: '基礎期', contents: ['基本問題演習（教科書レベル）', '基本問題演習', '基本問題演習'] },
+    { subjectCategory: 'math', phase: '実践期', contents: ['共テ形式演習（時間を測る）', '共テ形式演習', '共テ形式演習'] },
+    { subjectCategory: 'math', phase: '直前期', contents: ['過去問演習', '過去問演習', '計算速度トレーニング'] },
+    { subjectCategory: 'japanese', phase: '基礎期', contents: ['現代文 読解基礎', '古文単語・文法', '漢文 句法暗記'] },
+    { subjectCategory: 'japanese', phase: '実践期', contents: ['共テ形式 現代文演習', '共テ形式 古文演習', '共テ形式 漢文演習'] },
+    { subjectCategory: 'japanese', phase: '直前期', contents: ['過去問 現代文', '過去問 古文', '過去問 漢文'] },
+    { subjectCategory: 'science', phase: '基礎期', contents: ['基本問題演習', '基本問題演習'] },
+    { subjectCategory: 'science', phase: '実践期', contents: ['共テ形式演習', 'グラフ・実験考察問題'] },
+    { subjectCategory: 'science', phase: '直前期', contents: ['過去問演習', '弱点分野の集中演習'] },
+    { subjectCategory: 'social', phase: '基礎期', contents: ['教科書確認＋一問一答', '教科書確認＋一問一答'] },
+    { subjectCategory: 'social', phase: '実践期', contents: ['共テ形式演習', '資料読み取り演習'] },
+    { subjectCategory: 'social', phase: '直前期', contents: ['過去問演習', '暗記最終確認'] },
+    { subjectCategory: 'info', phase: '基礎期', contents: ['基礎知識（2進数、論理回路等）'] },
+    { subjectCategory: 'info', phase: '実践期', contents: ['プログラミング問題演習'] },
+    { subjectCategory: 'info', phase: '直前期', contents: ['予想問題演習'] },
+  ],
+  forgettingCurve: {
+    intervals: [1, 3, 7, 14, 30],
+    maxDailyReviewMinutes: 45,
+    graduationCount: 3,
+  },
+  generalRules: {
+    minBlockMinutes: 30,
+    maxBlockMinutes: 120,
+    defaultPomodoroWork: 30,
+    defaultPomodoroBreak: 5,
+    scienceRotation: true,
+    socialRotation: true,
+    mathAlternate: true,
+  },
+  updatedAt: new Date().toISOString(),
+};

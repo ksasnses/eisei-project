@@ -24,6 +24,7 @@ import { daysUntilExam } from '../utils/dateUtils';
 import { getStudyMinutesSummary } from '../utils/scheduleUtils';
 import { determineDayType } from '../utils/scheduleEngine';
 import { getDayTemplate, getSubjectCategory } from '../constants/dayTemplates';
+import { useRuleConfigStore } from '../stores/ruleConfigStore';
 import type { StudyTask } from '../types';
 
 const BLOCK_ACCENT: Record<string, string> = {
@@ -54,6 +55,7 @@ export function DashboardPage() {
   const dailyPlans = useStudyStore((s) => s.dailyPlans);
   const completedTasks = useStudyStore((s) => s.completedTasks);
   const generateDailyPlan = useStudyStore((s) => s.generateDailyPlan);
+  useRuleConfigStore((s) => s.config); // 設定変更時に再描画
   const completeTask = useStudyStore((s) => s.completeTask);
 
   const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);

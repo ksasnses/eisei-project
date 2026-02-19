@@ -1,3 +1,4 @@
+import { format } from 'date-fns';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { DailyPlan, StudyTask } from '../types';
@@ -18,6 +19,8 @@ interface StudyState {
   resetStreak: () => void;
   incrementPomodoros: (count: number) => void;
   generateDailyPlan: (date: string) => DailyPlan;
+  /** 設定変更時: 未来をクリア、今日を再生成、過去は保持 */
+  invalidatePlansOnRuleConfigChange: () => void;
   resetAll: () => void;
 }
 
@@ -138,6 +141,21 @@ export const useStudyStore = create<StudyState>()(
         );
         get().setDailyPlan(date, plan);
         return plan;
+      },
+
+      invalidatePlansOnRuleConfigChange: () => {
+        const today = format(new Date(), 'yyyy-MM-dd');
+        set((state) => {
+          const plans = { ...state.dailyPlans };
+          for (const key of Object.keys(plans)) {
+            if (key > today) delete plans[key];
+          }
+          return { dailyPlans: plans };
+        });
+        const profile = useStudentStore.getState().profile;
+        if (profile) {
+          get().generateDailyPlan(today);
+        }
       },
 
       resetAll: () => set(initialState),

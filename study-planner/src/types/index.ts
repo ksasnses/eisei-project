@@ -209,3 +209,76 @@ export interface DayTemplate {
   maxReviewMinutes: number;
   description: string;
 }
+
+/**
+ * 科目ブロック設定（1つの学習ブロックの定義）
+ * UI上で追加・削除・変更可能
+ */
+export interface BlockConfig {
+  id: string;
+  subjectCategory: 'english' | 'math' | 'japanese' | 'science' | 'social' | 'info';
+  durationMinutes: number;
+  pomodoroWorkMinutes: number;
+  pomodoroBreakMinutes: number;
+  order: number;
+  label: string;
+  enabled: boolean;
+}
+
+/**
+ * 日種別テンプレート設定
+ */
+export interface DayTemplateConfig {
+  dayType: DayType;
+  displayName: string;
+  icon: string;
+  description: string;
+  blocks: BlockConfig[];
+  maxReviewMinutes: number;
+}
+
+/**
+ * フェーズ別の学習内容テンプレート
+ */
+export interface PhaseContentConfig {
+  subjectCategory: 'english' | 'math' | 'japanese' | 'science' | 'social' | 'info';
+  phase: PhaseName;
+  contents: string[];
+}
+
+/**
+ * 全体のスケジュール設定
+ */
+export interface ScheduleRuleConfig {
+  version: number;
+  dayTemplates: DayTemplateConfig[];
+  phaseContents: PhaseContentConfig[];
+  forgettingCurve: {
+    intervals: number[];
+    maxDailyReviewMinutes: number;
+    graduationCount: number;
+  };
+  generalRules: {
+    minBlockMinutes: number;
+    maxBlockMinutes: number;
+    defaultPomodoroWork: number;
+    defaultPomodoroBreak: number;
+    scienceRotation: boolean;
+    socialRotation: boolean;
+    mathAlternate: boolean;
+  };
+  updatedAt: string;
+  /** 変更履歴（直近10件） */
+  changeLog?: { date: string; description: string }[];
+}
+
+/** 日種別の表示名 */
+export const DAY_TYPE_DISPLAY: Record<DayType, string> = {
+  weekday_club: '平日・部活あり',
+  weekday_no_club: '平日・部活なし',
+  weekend_holiday: '土日・休日',
+  summer_club: '夏休み・部活あり',
+  summer_no_club: '夏休み・部活なし',
+  match_day: '試合日',
+  event_day: 'イベント日',
+};

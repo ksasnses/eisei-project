@@ -13,6 +13,8 @@ import type {
   SelectedSubject,
 } from '../types';
 import { useStudentStore } from '../stores/studentStore';
+import { useRuleConfigStore } from '../stores/ruleConfigStore';
+import { useStudyStore } from '../stores/studyStore';
 import {
   getDefaultExamDate,
   formatDateForInput,
@@ -59,6 +61,8 @@ const TIME_OPTIONS = (() => {
 export function WizardPage() {
   const navigate = useNavigate();
   const setProfile = useStudentStore((s) => s.setProfile);
+  const syncTemplatesBySelectedSubjects = useRuleConfigStore((s) => s.syncTemplatesBySelectedSubjects);
+  const invalidatePlansOnRuleConfigChange = useStudyStore((s) => s.invalidatePlansOnRuleConfigChange);
 
   const [step, setStep] = useState(1);
   const [examTypeId, setExamTypeId] = useState<string>('');
@@ -268,6 +272,8 @@ export function WizardPage() {
       studyStartDate: new Date(studyStartDate).toISOString().slice(0, 10),
     };
     setProfile(profile);
+    syncTemplatesBySelectedSubjects(selectedSubjectIds);
+    invalidatePlansOnRuleConfigChange();
     navigate('/', { replace: true });
   };
 

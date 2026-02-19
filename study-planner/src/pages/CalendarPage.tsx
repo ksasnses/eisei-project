@@ -5,7 +5,6 @@ import { ja } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Plus, Trophy, Building2, CalendarCheck } from 'lucide-react';
 import { useStudentStore } from '../stores/studentStore';
 import { useStudyStore } from '../stores/studyStore';
-import { getSubjectById } from '../constants/subjects';
 import {
   getWeekStart,
   getWeekDates,
@@ -17,6 +16,7 @@ import {
 import { determineDayType } from '../utils/scheduleEngine';
 import { getAdjustedTemplate } from '../constants/dayTemplates';
 import { isSummerVacation } from '../utils/scheduleUtils';
+import { useRuleConfigStore } from '../stores/ruleConfigStore';
 import type { EventDate, EventType, StudyTask } from '../types';
 import type { DayType } from '../types';
 
@@ -39,16 +39,6 @@ const SUBJECT_CATEGORY_BG: Record<string, string> = {
   social: 'bg-orange-500',
   info: 'bg-gray-500',
   review: 'bg-amber-400',
-};
-
-/** 従来の科目カテゴリ（タスク表示用） */
-const CATEGORY_BG: Record<string, string> = {
-  地歴公民: 'bg-amber-400',
-  国語: 'bg-green-500',
-  外国語: 'bg-blue-500',
-  理科: 'bg-purple-500',
-  数学: 'bg-indigo-500',
-  情報: 'bg-slate-500',
 };
 
 /** 日種別アイコン */
@@ -74,15 +64,10 @@ function getEventsOnDate(events: EventDate[], dateStr: string): EventDate[] {
   });
 }
 
-function getSubjectBlockColor(task: StudyTask): string {
-  const subject = getSubjectById(task.subjectId);
-  if (task.type === 'review') return 'bg-orange-500';
-  return subject ? CATEGORY_BG[subject.category] ?? 'bg-slate-500' : 'bg-slate-500';
-}
-
 export function CalendarPage() {
   const profile = useStudentStore((s) => s.profile);
   const events = useStudentStore((s) => s.events);
+  useRuleConfigStore((s) => s.config); // 設定変更時に再描画
   const addEvent = useStudentStore((s) => s.addEvent);
   const mockExamSchedule = useStudentStore((s) => s.mockExamSchedule);
   const setMockExamSchedule = useStudentStore((s) => s.setMockExamSchedule);
