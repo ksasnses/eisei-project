@@ -206,10 +206,31 @@ export const useRuleConfigStore = create<RuleConfigState>()(
       name: 'schedule-rule-config',
       merge: (persisted, current) => {
         const p = persisted as { config?: ScheduleRuleConfig } | undefined;
-        if (p?.config?.generalRules && p.config.generalRules.bufferRatio == null) {
-          (p.config.generalRules as Record<string, unknown>).bufferRatio = 0.15;
+        if (!p?.config) return { ...current, ...p };
+        let config = p.config;
+        if (config.generalRules && config.generalRules.bufferRatio == null) {
+          config = { ...config, generalRules: { ...config.generalRules, bufferRatio: 0.15 } };
         }
-        return { ...current, ...p };
+        if ((config.version ?? 1) < 3) {
+          config = { ...config, version: 3, dayTemplates: DEFAULT_RULE_CONFIG.dayTemplates };
+        }
+        // 平日は英語・数学のみにする（version 4 移行）
+        const weekdayOnly = ['english', 'math'];
+        let changed = false;
+        const dayTemplates = config.dayTemplates.map((t) => {
+          if (t.dayType !== 'weekday_club' && t.dayType !== 'weekday_no_club') return t;
+          const hasNonWeekday = t.blocks.some(
+            (b) => !weekdayOnly.includes(b.subjectCategory)
+          );
+          if (!hasNonWeekday) return t;
+          changed = true;
+          const defaultT = DEFAULT_RULE_CONFIG.dayTemplates.find((d) => d.dayType === t.dayType);
+          return defaultT ? { ...t, blocks: defaultT.blocks, description: defaultT.description } : t;
+        });
+        if (changed) {
+          config = { ...config, version: 4, dayTemplates };
+        }
+        return { ...current, config };
       },
     }
   )

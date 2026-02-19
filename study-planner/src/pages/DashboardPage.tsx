@@ -1,4 +1,4 @@
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { format, subDays, getDay, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -74,7 +74,41 @@ export function DashboardPage() {
     if (!profile) return null;
     return determineDayType(profile, events, today);
   }, [profile, events, today]);
-  const dayDescription = dayType ? getDayTemplate(dayType).description : '';
+  const dayDescriptionFromTemplate = dayType ? getDayTemplate(dayType).description : '';
+
+  /** テンプレートと計画の教科が一致するか。平日は英語・数学のみなど、設定タブと同じにしたい */
+  const expectedCategories = useMemo(() => {
+    if (!dayType) return new Set<string>();
+    const t = getDayTemplate(dayType);
+    return new Set(
+      t.blocks.map((b) => b.subjectCategory).filter((c) => c !== 'review')
+    );
+  }, [dayType]);
+  const actualCategories = useMemo(() => {
+    const blockTasks = tasks.filter((t) => t.type !== 'review' && !t.reviewSource);
+    return new Set(
+      blockTasks
+        .map((t) => getSubjectCategory(t.subjectId))
+        .filter((c) => c !== 'unknown')
+    );
+  }, [tasks]);
+  const hasCategoryMismatch = useMemo(() => {
+    if (expectedCategories.size === 0) return false;
+    return [...actualCategories].some((c) => !expectedCategories.has(c));
+  }, [expectedCategories, actualCategories]);
+
+  const hasRegeneratedForMismatch = useRef(false);
+  useEffect(() => {
+    if (
+      hasCategoryMismatch &&
+      plan &&
+      profile &&
+      !hasRegeneratedForMismatch.current
+    ) {
+      hasRegeneratedForMismatch.current = true;
+      generateDailyPlan(today);
+    }
+  }, [hasCategoryMismatch, plan, profile, today, generateDailyPlan]);
 
   const reviewTasks = useMemo(() => tasks.filter((t) => t.type === 'review' || t.reviewSource != null), [tasks]);
   const blockTasks = useMemo(() => tasks.filter((t) => t.type !== 'review' && !t.reviewSource), [tasks]);
@@ -90,7 +124,13 @@ export function DashboardPage() {
     return order.filter((k) => map.has(k)).map((k) => ({ category: k, tasks: map.get(k)! }));
   }, [blockTasks]);
 
-  const isWeekdayClubOnly = dayType === 'weekday_club';
+  /** その日実際に行う教科のみの説明（テンプレートではなくタスクから生成） */
+  const dayDescription = useMemo(() => {
+    if (tasksByBlock.length === 0) return dayDescriptionFromTemplate;
+    const labels = tasksByBlock.map(({ category }) => BLOCK_LABELS[category] ?? category).filter(Boolean);
+    if (labels.length === 0) return dayDescriptionFromTemplate;
+    return `今日は${labels.join('・')}に取り組みます`;
+  }, [tasksByBlock, dayDescriptionFromTemplate]);
 
   // 設定タブの「1日の勉強可能時間」と同じ計算で表示（一致させる）
   const studyMinutesForToday = useMemo(() => {
@@ -542,9 +582,9 @@ export function DashboardPage() {
                   );
                 })}
 
-                {isWeekdayClubOnly && (
+                {tasksByBlock.length > 0 && (
                   <p className="rounded-lg bg-blue-50 py-3 text-center text-sm text-blue-800">
-                    今日は英語と数学に集中する日です💪
+                    今日も頑張りましょう💪
                   </p>
                 )}
               </div>

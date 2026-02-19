@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   BarChart,
@@ -56,6 +56,7 @@ export function SettingsPage() {
   const [showImportError, setShowImportError] = useState<string | null>(null);
   const [scheduleToast, setScheduleToast] = useState(false);
   const [ruleConfigToast, setRuleConfigToast] = useState(false);
+  const onRuleConfigSave = useCallback(() => setRuleConfigToast(true), []);
   useEffect(() => {
     if (!scheduleToast) return;
     const t = setTimeout(() => setScheduleToast(false), 3000);
@@ -839,9 +840,7 @@ export function SettingsPage() {
         <p className="mb-4 text-sm text-slate-600">
           曜日別のスケジュール・フェーズ別学習内容・復習ルールなどを、コードを触らずに変更できます。
         </p>
-        <RuleConfigEditor
-          onSaveToast={() => setRuleConfigToast(true)}
-        />
+        <RuleConfigEditor onSaveToast={onRuleConfigSave} />
         {ruleConfigToast && (
           <div className="mt-4 rounded-lg bg-green-100 px-4 py-2 text-sm text-green-800">
             設定を保存しました。スケジュールが再生成されます。

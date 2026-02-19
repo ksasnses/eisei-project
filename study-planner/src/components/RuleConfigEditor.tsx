@@ -15,6 +15,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { useRuleConfigStore } from '../stores/ruleConfigStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useStudyStore } from '../stores/studyStore';
 import { useStudentStore } from '../stores/studentStore';
 import { formatDateForInput } from '../utils/dateUtils';
@@ -78,11 +79,10 @@ function DayTemplateValidation({
   maxReviewMinutes: number;
 }) {
   const profile = useStudentStore((s) => s.profile);
-  const config = useRuleConfigStore((s) => s.config);
+  const bufferRatio = useRuleConfigStore((s) => s.config.generalRules?.bufferRatio ?? 0.15);
   if (!profile) return null;
   const summary = getStudyMinutesSummary(profile.dailySchedule);
   const rawAvailable = getAvailableForDayType(summary, dayType);
-  const bufferRatio = config.generalRules.bufferRatio ?? 0.15;
   const bufferMinutes = Math.ceil(rawAvailable * bufferRatio);
   const effectiveMinutes = Math.max(0, rawAvailable - bufferMinutes);
   const reviewCap = Math.min(maxReviewMinutes, Math.floor(effectiveMinutes * 0.2));
@@ -140,7 +140,7 @@ function DayTemplatesSection({
 }: {
   onSaveToast: () => void;
 }) {
-  const config = useRuleConfigStore((s) => s.config);
+  const dayTemplates = useRuleConfigStore(useShallow((s) => s.config.dayTemplates));
   const updateDayTemplate = useRuleConfigStore((s) => s.updateDayTemplate);
   const addChangeLogEntry = useRuleConfigStore((s) => s.addChangeLogEntry);
   const invalidatePlansOnRuleConfigChange = useStudyStore((s) => s.invalidatePlansOnRuleConfigChange);
@@ -148,10 +148,10 @@ function DayTemplatesSection({
   const [expandedDayType, setExpandedDayType] = useState<DayType | null>(null);
   const [editState, setEditState] = useState<DayTemplateConfig | null>(null);
 
-  const templates = config.dayTemplates.filter(
+  const templates = dayTemplates.filter(
     (t) => t.dayType !== 'match_day' && t.dayType !== 'event_day'
   );
-  const specialTemplates = config.dayTemplates.filter(
+  const specialTemplates = dayTemplates.filter(
     (t) => t.dayType === 'match_day' || t.dayType === 'event_day'
   );
 
@@ -480,9 +480,13 @@ function DayTemplatesSection({
   );
 }
 
+const PHASE_CONTENTS_EMPTY: { subjectCategory: string; phase: string; contents: string[] }[] = [];
+
 /** セクション2: フェーズ別学習内容 */
 function PhaseContentSection({ onSaveToast }: { onSaveToast: () => void }) {
-  const config = useRuleConfigStore((s) => s.config);
+  const phaseContents = useRuleConfigStore(
+    useShallow((s) => s.config.phaseContents ?? PHASE_CONTENTS_EMPTY)
+  );
   const updatePhaseContent = useRuleConfigStore((s) => s.updatePhaseContent);
   const addChangeLogEntry = useRuleConfigStore((s) => s.addChangeLogEntry);
   const invalidatePlansOnRuleConfigChange = useStudyStore((s) => s.invalidatePlansOnRuleConfigChange);
@@ -490,18 +494,24 @@ function PhaseContentSection({ onSaveToast }: { onSaveToast: () => void }) {
   const [activeSubject, setActiveSubject] = useState<BlockConfig['subjectCategory']>('english');
   const [draftContents, setDraftContents] = useState<Record<string, string[]>>({});
 
+  const phaseContentsKey = JSON.stringify(phaseContents);
   useEffect(() => {
     const draft: Record<string, string[]> = {};
-    config.phaseContents.forEach((p) => {
+    phaseContents.forEach((p) => {
       const key = `${p.subjectCategory}:${p.phase}`;
       draft[key] = [...p.contents];
     });
-    setDraftContents(draft);
-  }, [config.phaseContents, activeSubject]);
+    setDraftContents((prev) => {
+      const prevStr = JSON.stringify(prev);
+      const nextStr = JSON.stringify(draft);
+      if (prevStr === nextStr) return prev;
+      return draft;
+    });
+  }, [phaseContentsKey]);
 
   const getContents = (phase: string): string[] => {
     const key = `${activeSubject}:${phase}`;
-    return draftContents[key] ?? config.phaseContents.find(
+    return draftContents[key] ?? phaseContents.find(
       (p) => p.subjectCategory === activeSubject && p.phase === phase
     )?.contents ?? [];
   };
@@ -597,20 +607,28 @@ function PhaseContentSection({ onSaveToast }: { onSaveToast: () => void }) {
 
 /** セクション3: 復習ルール */
 function ForgettingCurveSection({ onSaveToast }: { onSaveToast: () => void }) {
-  const config = useRuleConfigStore((s) => s.config);
+  const forgettingCurve = useRuleConfigStore(
+    useShallow((s) => s.config.forgettingCurve)
+  );
   const updateForgettingCurve = useRuleConfigStore((s) => s.updateForgettingCurve);
   const addChangeLogEntry = useRuleConfigStore((s) => s.addChangeLogEntry);
   const invalidatePlansOnRuleConfigChange = useStudyStore((s) => s.invalidatePlansOnRuleConfigChange);
 
-  const [intervals, setIntervals] = useState<number[]>(config.forgettingCurve.intervals);
-  const [maxDaily, setMaxDaily] = useState(config.forgettingCurve.maxDailyReviewMinutes);
-  const [gradCount, setGradCount] = useState(config.forgettingCurve.graduationCount);
+  const [intervals, setIntervals] = useState<number[]>(forgettingCurve.intervals);
+  const [maxDaily, setMaxDaily] = useState(forgettingCurve.maxDailyReviewMinutes);
+  const [gradCount, setGradCount] = useState(forgettingCurve.graduationCount);
 
+  const fcKey = JSON.stringify({
+    i: forgettingCurve.intervals,
+    m: forgettingCurve.maxDailyReviewMinutes,
+    g: forgettingCurve.graduationCount,
+  });
   useEffect(() => {
-    setIntervals(config.forgettingCurve.intervals);
-    setMaxDaily(config.forgettingCurve.maxDailyReviewMinutes);
-    setGradCount(config.forgettingCurve.graduationCount);
-  }, [config.forgettingCurve]);
+    const { intervals: ci, maxDailyReviewMinutes: cm, graduationCount: cg } = forgettingCurve;
+    setIntervals((prev) => (JSON.stringify(prev) === JSON.stringify(ci) ? prev : ci));
+    setMaxDaily((prev) => (prev === cm ? prev : cm));
+    setGradCount((prev) => (prev === cg ? prev : cg));
+  }, [fcKey]);
 
   const handleSave = () => {
     updateForgettingCurve({
@@ -702,7 +720,7 @@ function ForgettingCurveSection({ onSaveToast }: { onSaveToast: () => void }) {
 
 /** セクション4: 詳細設定 */
 function GeneralRulesSection({ onSaveToast }: { onSaveToast: () => void }) {
-  const config = useRuleConfigStore((s) => s.config);
+  const gr = useRuleConfigStore(useShallow((s) => s.config.generalRules));
   const updateGeneralRules = useRuleConfigStore((s) => s.updateGeneralRules);
   const addChangeLogEntry = useRuleConfigStore((s) => s.addChangeLogEntry);
   const invalidatePlansOnRuleConfigChange = useStudyStore((s) => s.invalidatePlansOnRuleConfigChange);
@@ -712,8 +730,6 @@ function GeneralRulesSection({ onSaveToast }: { onSaveToast: () => void }) {
     invalidatePlansOnRuleConfigChange();
     onSaveToast();
   };
-
-  const gr = config.generalRules;
 
   return (
     <div className="space-y-4">
@@ -930,9 +946,11 @@ function RuleBackupSection({ onSaveToast }: { onSaveToast: () => void }) {
   );
 }
 
+const EMPTY_CHANGELOG: { date: string; description: string }[] = [];
+
 /** セクション6: 変更履歴 */
 function ChangeLogSection() {
-  const changeLog = useRuleConfigStore((s) => s.config.changeLog ?? []);
+  const changeLog = useRuleConfigStore((s) => s.config.changeLog ?? EMPTY_CHANGELOG);
   const entries = changeLog.slice(0, 10);
   if (entries.length === 0) return null;
   return (
