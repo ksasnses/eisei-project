@@ -1,4 +1,8 @@
 {
+  "buildCommand": "cd study-planner && npm run build",
+  "outputDirectory": "study-planner/dist",
+  "installCommand": "cd study-planner && npm ci",
+  "framework": null,
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ]
