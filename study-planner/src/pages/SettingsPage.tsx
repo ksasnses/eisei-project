@@ -13,8 +13,11 @@ import {
 import { useStudentStore } from '../stores/studentStore';
 import { useStudyStore } from '../stores/studyStore';
 import { useCurriculumStore } from '../stores/curriculumStore';
+import { useFeedbackStore } from '../stores/feedbackStore';
 import { getSubjectById } from '../constants/subjects';
 import { EXAM_TEMPLATES } from '../constants/examTemplates';
+import { format, subDays } from 'date-fns';
+import { ja } from 'date-fns/locale';
 import { formatDateForInput } from '../utils/dateUtils';
 import { getStudyMinutesSummary } from '../utils/scheduleUtils';
 import { getDayTemplate } from '../constants/dayTemplates';
@@ -31,6 +34,183 @@ const TIME_OPTIONS = (() => {
 })();
 
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+
+/** 学習レポート出力（保護者へ共有用） */
+function StudyReportSection({
+  profile,
+  getFeedbackSince,
+}: {
+  profile: ReturnType<typeof useStudentStore.getState>['profile'];
+  getFeedbackSince: (date: string) => { date: string; text: string }[];
+}) {
+  const completedTasks = useStudyStore((s) => s.completedTasks);
+  const streakDays = useStudyStore((s) => s.streakDays);
+  const totalPomodoros = useStudyStore((s) => s.totalPomodoros);
+  const [reportToast, setReportToast] = useState(false);
+  useEffect(() => {
+    if (!reportToast) return;
+    const t = setTimeout(() => setReportToast(false), 3000);
+    return () => clearTimeout(t);
+  }, [reportToast]);
+
+  const generateReportText = (days: number) => {
+    const endDate = new Date();
+    const startDate = subDays(endDate, days);
+    const startStr = formatDateForInput(startDate);
+    const endStr = formatDateForInput(endDate);
+    const tasksInPeriod = completedTasks.filter((t) => {
+      if (!t.completedAt) return false;
+      const d = t.completedAt.slice(0, 10);
+      return d >= startStr && d <= endStr;
+    });
+    const totalMinutes = tasksInPeriod.reduce(
+      (sum, t) => sum + (t.actualMinutes ?? t.estimatedMinutes ?? 0),
+      0
+    );
+    const bySubject = new Map<string, number>();
+    tasksInPeriod.forEach((t) => {
+      const name = getSubjectById(t.subjectId)?.name ?? t.subjectId;
+      bySubject.set(name, (bySubject.get(name) ?? 0) + (t.actualMinutes ?? t.estimatedMinutes ?? 0));
+    });
+    const feedbackEntries = getFeedbackSince(startStr);
+
+    const lines: string[] = [
+      '＝＝＝ 学習レポート（保護者用） ＝＝＝',
+      `作成日時: ${format(new Date(), 'yyyy年M月d日(E) HH:mm', { locale: ja })}`,
+      `対象期間: ${format(startDate, 'M/d', { locale: ja })} 〜 ${format(endDate, 'M/d', { locale: ja })}`,
+      `名前: ${profile?.name ?? '—'}`,
+      `試験日: ${profile?.examDate ? format(new Date(profile.examDate), 'yyyy年M月d日', { locale: ja }) : '—'}`,
+      '',
+      '【学習サマリー】',
+      `・連続学習: ${streakDays}日`,
+      `・累計ポモドーロ: ${totalPomodoros}セット`,
+      `・期間内の学習時間: 合計 ${Math.floor(totalMinutes / 60)}時間${totalMinutes % 60}分`,
+      `・完了タスク数: ${tasksInPeriod.length}件`,
+      '',
+      '【科目別学習時間】',
+      ...Array.from(bySubject.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, min]) => `・${name}: ${Math.floor(min / 60)}h${min % 60}m`),
+    ];
+
+    if (feedbackEntries.length > 0) {
+      lines.push('', '【振り返り・フィードバック】');
+      feedbackEntries.forEach((e) => {
+        const d = format(new Date(e.date + 'T12:00:00'), 'M/d(E)', { locale: ja });
+        lines.push(`・${d}: ${e.text}`);
+      });
+    }
+
+    lines.push('', '＝＝＝ 以上 ＝＝＝');
+    return lines.join('\n');
+  };
+
+  const handleCopyReport = (days: number) => {
+    const text = generateReportText(days);
+    navigator.clipboard.writeText(text).then(() => setReportToast(true));
+  };
+
+  const handleDownloadReport = (days: number) => {
+    const text = generateReportText(days);
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `学習レポート-${formatDateForInput(new Date())}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setReportToast(true);
+  };
+
+  const handleShareReport = async (days: number) => {
+    const text = generateReportText(days);
+    const title = `学習レポート（過去${days}日分）`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title,
+          text,
+        });
+        setReportToast(true);
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          navigator.clipboard?.writeText(text).then(() => setReportToast(true));
+        }
+      }
+    } else {
+      navigator.clipboard?.writeText(text).then(() => setReportToast(true));
+    }
+  };
+
+  const canShare = typeof navigator !== 'undefined' && !!navigator.share;
+
+  return (
+    <section className="mb-8 rounded-xl border border-indigo-200 bg-indigo-50/30 p-4 shadow-sm">
+      <h2 className="mb-2 text-lg font-semibold text-slate-800">
+        📋 学習レポート（保護者へ共有）
+      </h2>
+      <p className="mb-4 text-sm text-slate-600">
+        学習状況と「今日の振り返り」をまとめたレポートを出力できます。保護者に渡して学習の様子を共有できます。
+      </p>
+      {canShare && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => handleShareReport(7)}
+            className="flex items-center gap-1.5 rounded-lg border-2 border-indigo-500 bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700"
+          >
+            📤 過去7日分を保護者に送る
+          </button>
+          <button
+            type="button"
+            onClick={() => handleShareReport(30)}
+            className="flex items-center gap-1.5 rounded-lg border-2 border-indigo-500 bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700"
+          >
+            📤 過去30日分を保護者に送る
+          </button>
+        </div>
+      )}
+      <p className="mb-3 text-xs text-slate-500">
+        {canShare
+          ? '「保護者に送る」をタップすると、LINE・メールなどで共有できます。'
+          : '以下のコピー・ダウンロードから共有できます。'}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => handleCopyReport(7)}
+          className="rounded-lg border border-indigo-200 bg-white px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50"
+        >
+          過去7日分をコピー
+        </button>
+        <button
+          type="button"
+          onClick={() => handleCopyReport(30)}
+          className="rounded-lg border border-indigo-200 bg-white px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50"
+        >
+          過去30日分をコピー
+        </button>
+        <button
+          type="button"
+          onClick={() => handleDownloadReport(7)}
+          className="rounded-lg border border-indigo-300 bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+        >
+          過去7日分をダウンロード
+        </button>
+        <button
+          type="button"
+          onClick={() => handleDownloadReport(30)}
+          className="rounded-lg border border-indigo-300 bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+        >
+          過去30日分をダウンロード
+        </button>
+      </div>
+      {reportToast && (
+        <p className="mt-3 text-sm text-green-700">✓ 共有しました / クリップボードにコピーしました / ダウンロードしました</p>
+      )}
+    </section>
+  );
+}
 
 /** 伸ばしやすさ 1〜5: 暗記型+苦手度低→高、思考型+苦手度高→低 */
 function getEaseScore(
@@ -51,6 +231,8 @@ export function SettingsPage() {
   const generateDailyPlan = useStudyStore((s) => s.generateDailyPlan);
   const getTextbooks = useCurriculumStore((s) => s.getTextbooks);
   const resetAllCurriculum = useCurriculumStore((s) => s.resetAll);
+  const getFeedbackSince = useFeedbackStore((s) => s.getFeedbackSince);
+  const resetAllFeedback = useFeedbackStore((s) => s.clearAll);
 
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showImportError, setShowImportError] = useState<string | null>(null);
@@ -161,6 +343,7 @@ export function SettingsPage() {
     resetAllStudy();
     resetAllStudent();
     resetAllCurriculum();
+    resetAllFeedback();
     setShowResetConfirm(false);
     navigate('/wizard', { replace: true });
   };
@@ -911,6 +1094,12 @@ export function SettingsPage() {
           </div>
         )}
       </section>
+
+      {/* 学習レポート出力（保護者へ共有） */}
+      <StudyReportSection
+        profile={profile}
+        getFeedbackSince={getFeedbackSince}
+      />
 
       {/* データのエクスポート/インポート */}
       <section className="mb-8 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">

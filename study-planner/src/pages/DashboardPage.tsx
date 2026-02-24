@@ -25,6 +25,7 @@ import { getStudyMinutesSummary } from '../utils/scheduleUtils';
 import { determineDayType } from '../utils/scheduleEngine';
 import { getDayTemplate, getSubjectCategory } from '../constants/dayTemplates';
 import { useRuleConfigStore } from '../stores/ruleConfigStore';
+import { useFeedbackStore } from '../stores/feedbackStore';
 import type { StudyTask } from '../types';
 
 const BLOCK_ACCENT: Record<string, string> = {
@@ -46,6 +47,29 @@ const BLOCK_LABELS: Record<string, string> = {
   info: '情報',
   review: '復習',
 };
+
+/** 今日の振り返り（保護者への報告用） */
+function TodayFeedbackSection({ today }: { today: string }) {
+  const text = useFeedbackStore((s) => s.getFeedbackForDate(today));
+  const setFeedback = useFeedbackStore((s) => s.setFeedback);
+  return (
+    <section className="mb-6 rounded-xl border border-indigo-200 bg-indigo-50/50 p-4 shadow-sm">
+      <div className="flex items-center gap-2 text-indigo-700">
+        <span className="text-sm font-medium">📝 今日の振り返り（保護者への報告用）</span>
+      </div>
+      <p className="mt-1 text-xs text-indigo-600">
+        学習の様子・困っていることなど、保護者に伝えたいことを書いておくと、後で「学習レポート」にまとめて共有できます。
+      </p>
+      <textarea
+        value={text}
+        onChange={(e) => setFeedback(today, e.target.value)}
+        placeholder="例：今日は英語に集中できた。数学のこの単元が難しい。"
+        className="mt-2 w-full rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400"
+        rows={3}
+      />
+    </section>
+  );
+}
 
 export function DashboardPage() {
   const profile = useStudentStore((s) => s.profile);
@@ -329,6 +353,9 @@ export function DashboardPage() {
           暗記系のインプットに最適です。音声教材も活用しましょう。
         </p>
       </section>
+
+      {/* 今日の振り返り（保護者への報告用） */}
+      <TodayFeedbackSection today={today} />
 
       <div className="lg:flex lg:gap-6">
         {/* メイン: 今日のタスク */}
