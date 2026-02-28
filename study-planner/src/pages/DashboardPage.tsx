@@ -24,7 +24,6 @@ import { daysUntilExam } from '../utils/dateUtils';
 import { getStudyMinutesSummary } from '../utils/scheduleUtils';
 import { determineDayType } from '../utils/scheduleEngine';
 import { getDayTemplate, getSubjectCategory } from '../constants/dayTemplates';
-import { getDailyMotivation } from '../constants/dailyMotivations';
 import { useRuleConfigStore } from '../stores/ruleConfigStore';
 import { useFeedbackStore } from '../stores/feedbackStore';
 import type { StudyTask } from '../types';
@@ -296,14 +295,6 @@ export function DashboardPage() {
         </div>
       </header>
 
-      {/* 今日の心構え（日替わり） */}
-      <section className="mb-6 rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
-        <p className="text-xs font-medium text-indigo-600">📌 今日の心構え</p>
-        <p className="mt-2 text-sm leading-relaxed text-slate-800">
-          「{getDailyMotivation(new Date())}」
-        </p>
-      </section>
-
       {daysLeft <= 30 && (
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
           <p className="font-medium text-amber-800">
@@ -362,9 +353,6 @@ export function DashboardPage() {
           暗記系のインプットに最適です。音声教材も活用しましょう。
         </p>
       </section>
-
-      {/* 今日の振り返り（保護者への報告用） */}
-      <TodayFeedbackSection today={today} />
 
       <div className="lg:flex lg:gap-6">
         {/* メイン: 今日のタスク */}
@@ -765,6 +753,9 @@ export function DashboardPage() {
           </span>
         </div>
       </section>
+
+      {/* 今日の振り返り（保護者への報告用） */}
+      <TodayFeedbackSection today={today} />
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-route
 import { useStudentStore } from './stores/studentStore';
 import { useAuthStore } from './stores/authStore';
 import { AuthScreen } from './components/AuthScreen';
+import { getDailyMotivation } from './constants/dailyMotivations';
 import { BottomNav } from './components/BottomNav';
 import { DashboardPage } from './pages/DashboardPage';
 import { WizardPage } from './pages/WizardPage';
@@ -36,10 +37,40 @@ function InitializedGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function AppTitle() {
+function AppHeader() {
   const profile = useStudentStore((s) => s.profile);
+  const hasPassword = useAuthStore((s) => s.hasPassword)();
+  const lock = useAuthStore((s) => s.lock);
+  const location = useLocation();
+  const isHome = location.pathname === '/';
   const title = profile?.name ? `${profile.name}の試験までの道` : '試験までの道';
-  return <h1 className="text-xl font-bold text-slate-800">{title}</h1>;
+  const motivation = getDailyMotivation(new Date());
+
+  return (
+    <header className="border-b border-slate-200 bg-white px-4 py-3">
+      <div className="flex items-center justify-between gap-2">
+        {!isHome && (
+          <h1 className="text-5xl font-bold text-slate-800">{title}</h1>
+        )}
+        {isHome && <div className="flex-1" />}
+        {hasPassword && (
+          <button
+            type="button"
+            onClick={lock}
+            className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+            aria-label="ロック"
+          >
+            ロック
+          </button>
+        )}
+      </div>
+      {!isHome && (
+        <p className="mt-3 text-sm font-bold text-slate-700">
+          📌 今日の心構え：「{motivation}」
+        </p>
+      )}
+    </header>
+  );
 }
 
 function App() {
@@ -102,11 +133,7 @@ function App() {
                 {storageError}
               </div>
             )}
-            {isInitialized && (
-              <header className="border-b border-slate-200 bg-white px-4 py-3">
-                <AppTitle />
-              </header>
-            )}
+            {isInitialized && <AppHeader />}
           <main className={isInitialized ? 'pb-16' : ''}>
             <Routes>
               <Route path="/" element={<DashboardPage />} />
