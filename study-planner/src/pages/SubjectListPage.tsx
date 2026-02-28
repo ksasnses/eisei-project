@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import { useStudentStore } from '../stores/studentStore';
 import { getSubjectById } from '../constants/subjects';
+import { ScoreStrategySimulator } from '../components/ScoreStrategySimulator';
 
 const CATEGORY_COLORS: Record<string, string> = {
   地歴公民: 'bg-amber-100 text-amber-800',
@@ -20,7 +21,10 @@ export function SubjectListPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 pb-24 pt-4">
       <h1 className="mb-6 text-xl font-semibold text-slate-800">受験科目</h1>
-      <ul className="space-y-2">
+
+      <ScoreStrategySimulator />
+
+      <ul className="mt-8 space-y-2">
         {profile.subjects.map((s) => {
           const subject = getSubjectById(s.subjectId);
           const color =
