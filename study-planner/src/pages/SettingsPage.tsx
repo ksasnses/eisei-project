@@ -12,6 +12,7 @@ import { formatDateForInput } from '../utils/dateUtils';
 import { getStudyMinutesSummary } from '../utils/scheduleUtils';
 import { getDayTemplate } from '../constants/dayTemplates';
 import { RuleConfigEditor } from '../components/RuleConfigEditor';
+import { useAuthStore } from '../stores/authStore';
 
 const TIME_OPTIONS = (() => {
   const opts: string[] = [];
@@ -219,6 +220,8 @@ export function SettingsPage() {
   const [scheduleToast, setScheduleToast] = useState(false);
   const [ruleConfigToast, setRuleConfigToast] = useState(false);
   const onRuleConfigSave = useCallback(() => setRuleConfigToast(true), []);
+  const hasPassword = useAuthStore((s) => s.hasPassword)();
+  const lock = useAuthStore((s) => s.lock);
   useEffect(() => {
     if (!scheduleToast) return;
     const t = setTimeout(() => setScheduleToast(false), 3000);
@@ -361,6 +364,23 @@ export function SettingsPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 pb-24 pt-4" style={{ color: '#0f172a' }}>
       <h1 className="mb-6 text-xl font-semibold text-slate-800">設定</h1>
+
+      {/* ロック */}
+      {hasPassword && (
+        <section className="mb-8 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 className="mb-2 text-lg font-semibold text-slate-800">セキュリティ</h2>
+          <p className="mb-4 text-sm text-slate-500">
+            アプリをロックして、再起動時にパスワード入力を求めます。
+          </p>
+          <button
+            type="button"
+            onClick={lock}
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            今すぐロック
+          </button>
+        </section>
+      )}
 
       {/* プロフィール編集 */}
       <section className="mb-8 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">

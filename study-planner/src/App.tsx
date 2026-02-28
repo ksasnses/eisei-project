@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { useStudentStore } from './stores/studentStore';
+import { useAuthStore } from './stores/authStore';
+import { AuthScreen } from './components/AuthScreen';
 import { BottomNav } from './components/BottomNav';
 import { DashboardPage } from './pages/DashboardPage';
 import { WizardPage } from './pages/WizardPage';
@@ -11,6 +13,19 @@ import { SubjectListPage } from './pages/SubjectListPage';
 import { SubjectDetailPage } from './pages/SubjectDetailPage';
 import { ProgressHeatmapPage } from './pages/ProgressHeatmapPage';
 
+function AuthGuard({ children }: { children: React.ReactNode }) {
+  const hasPassword = useAuthStore((s) => s.hasPassword)();
+  const isUnlocked = useAuthStore((s) => s.isUnlocked);
+
+  if (hasPassword && !isUnlocked) {
+    return <AuthScreen />;
+  }
+  if (!hasPassword) {
+    return <AuthScreen />;
+  }
+  return <>{children}</>;
+}
+
 function InitializedGuard({ children }: { children: React.ReactNode }) {
   const isInitialized = useStudentStore((s) => s.isInitialized);
   const location = useLocation();
@@ -19,6 +34,12 @@ function InitializedGuard({ children }: { children: React.ReactNode }) {
     return <Navigate to="/wizard" replace />;
   }
   return <>{children}</>;
+}
+
+function AppTitle() {
+  const profile = useStudentStore((s) => s.profile);
+  const title = profile?.name ? `${profile.name}の試験までの道` : '試験までの道';
+  return <h1 className="text-xl font-bold text-slate-800">{title}</h1>;
 }
 
 function App() {
@@ -73,18 +94,19 @@ function App() {
 
   return (
     <BrowserRouter>
-      <InitializedGuard>
-        <div className="min-h-screen bg-slate-50" style={{ color: '#0f172a' }}>
-          {storageError && (
-            <div className="bg-amber-100 px-4 py-2 text-center text-sm text-amber-900">
-              {storageError}
-            </div>
-          )}
-          {isInitialized && (
-            <header className="border-b border-slate-200 bg-white px-4 py-3">
-              <h1 className="text-xl font-bold text-slate-800">eisei project</h1>
-            </header>
-          )}
+      <AuthGuard>
+        <InitializedGuard>
+          <div className="min-h-screen bg-slate-50" style={{ color: '#0f172a' }}>
+            {storageError && (
+              <div className="bg-amber-100 px-4 py-2 text-center text-sm text-amber-900">
+                {storageError}
+              </div>
+            )}
+            {isInitialized && (
+              <header className="border-b border-slate-200 bg-white px-4 py-3">
+                <AppTitle />
+              </header>
+            )}
           <main className={isInitialized ? 'pb-16' : ''}>
             <Routes>
               <Route path="/" element={<DashboardPage />} />
@@ -98,8 +120,9 @@ function App() {
             </Routes>
           </main>
           {isInitialized && <BottomNav />}
-        </div>
-      </InitializedGuard>
+          </div>
+        </InitializedGuard>
+      </AuthGuard>
     </BrowserRouter>
   );
 }
