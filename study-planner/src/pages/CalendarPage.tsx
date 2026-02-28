@@ -564,7 +564,7 @@ function MonthMiniView({
   while (cells.length < rows * 7) cells.push({ date: null, dateStr: '' });
 
   return (
-    <section className="mt-8 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <section className="mt-8 rounded-xl border border-slate-200 bg-white p-4 shadow-sm overflow-x-auto">
       <h3 className="mb-2 text-sm font-semibold text-slate-700">
         {year}年{month + 1}月
         {streakDays > 0 && (
@@ -573,7 +573,7 @@ function MonthMiniView({
           </span>
         )}
       </h3>
-      <div className="grid grid-cols-7 gap-1 text-center">
+      <div className="grid min-w-[360px] grid-cols-7 gap-1 text-center">
         {WEEKDAY_LABELS.map((w) => (
           <div key={w} className="text-xs font-medium text-slate-400">
             {w}

@@ -9,6 +9,7 @@ import { TimerPage } from './pages/TimerPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { SubjectListPage } from './pages/SubjectListPage';
 import { SubjectDetailPage } from './pages/SubjectDetailPage';
+import { ProgressHeatmapPage } from './pages/ProgressHeatmapPage';
 
 function InitializedGuard({ children }: { children: React.ReactNode }) {
   const isInitialized = useStudentStore((s) => s.isInitialized);
@@ -89,6 +90,7 @@ function App() {
               <Route path="/" element={<DashboardPage />} />
               <Route path="/wizard" element={<WizardPage />} />
               <Route path="/calendar" element={<CalendarPage />} />
+              <Route path="/progress" element={<ProgressHeatmapPage />} />
               <Route path="/timer" element={<TimerPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/subjects" element={<SubjectListPage />} />

@@ -1,9 +1,10 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Calendar, Timer, BookOpen, Settings } from 'lucide-react';
+import { Home, Calendar, BarChart2, Timer, BookOpen, Settings } from 'lucide-react';
 
 const NAV_ITEMS = [
   { path: '/', label: 'ホーム', icon: Home },
   { path: '/calendar', label: 'カレンダー', icon: Calendar },
+  { path: '/progress', label: '進捗', icon: BarChart2 },
   { path: '/timer', label: 'タイマー', icon: Timer },
   { path: '/subjects', label: '科目', icon: BookOpen },
   { path: '/settings', label: '設定', icon: Settings },
