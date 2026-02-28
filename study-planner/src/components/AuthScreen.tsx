@@ -1,16 +1,26 @@
 import { useState } from 'react';
 import { useAuthStore } from '../stores/authStore';
+import { useStudentStore } from '../stores/studentStore';
 import { getDailyMotivation } from '../constants/dailyMotivations';
+import { BookOpen, ChevronLeft } from 'lucide-react';
+import { UsageGuideContent } from './UsageGuideContent';
+
+type AuthView = 'auth' | 'usage';
 
 /** パスワード作成・ロック解除画面 */
 export function AuthScreen() {
   const hasPassword = useAuthStore((s) => s.hasPassword)();
   const setPassword = useAuthStore((s) => s.setPassword);
   const unlock = useAuthStore((s) => s.unlock);
+  const profile = useStudentStore((s) => s.profile);
 
   const [password, setPasswordInput] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
+  const [view, setView] = useState<AuthView>('auth');
+
+  const title = profile?.name ? `${profile.name}の試験までの道` : '試験までの道';
+  const motivation = getDailyMotivation(new Date());
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,18 +48,44 @@ export function AuthScreen() {
     setPasswordInput('');
   };
 
-  const motivation = getDailyMotivation(new Date());
+  if (view === 'usage') {
+    return (
+      <div className="flex min-h-screen flex-col bg-slate-50">
+        <div className="sticky top-0 z-10 border-b border-slate-200 bg-white px-4 py-3">
+          <button
+            type="button"
+            onClick={() => setView('auth')}
+            className="flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-800"
+          >
+            <ChevronLeft className="h-5 w-5" />
+            戻る
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-6">
+          <UsageGuideContent />
+        </div>
+      </div>
+    );
+  }
 
   if (hasPassword) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-6">
         <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-lg">
-          <h1 className="mb-2 text-center text-lg font-bold text-slate-800">
-            試験までの道
+          <h1 className="mb-2 text-center text-2xl font-bold text-slate-800">
+            {title}
           </h1>
-          <p className="mb-6 text-center text-sm font-bold text-slate-700">
+          <p className="mb-4 text-center text-sm font-bold text-slate-700">
             📌 今日の心構え：「{motivation}」
           </p>
+          <button
+            type="button"
+            onClick={() => setView('usage')}
+            className="mb-6 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+          >
+            <BookOpen className="h-4 w-4" />
+            アプリの使用方法
+          </button>
           <h2 className="mb-4 text-center text-base font-semibold text-slate-700">
             ロック解除
           </h2>
@@ -83,12 +119,20 @@ export function AuthScreen() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-6">
       <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-lg">
-        <h1 className="mb-2 text-center text-lg font-bold text-slate-800">
-          試験までの道
+        <h1 className="mb-2 text-center text-2xl font-bold text-slate-800">
+          {title}
         </h1>
-        <p className="mb-6 text-center text-sm font-bold text-slate-700">
+        <p className="mb-4 text-center text-sm font-bold text-slate-700">
           📌 今日の心構え：「{motivation}」
         </p>
+        <button
+          type="button"
+          onClick={() => setView('usage')}
+          className="mb-6 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+        >
+          <BookOpen className="h-4 w-4" />
+          アプリの使用方法
+        </button>
         <h2 className="mb-2 text-center text-base font-semibold text-slate-700">
           パスワードを作成
         </h2>

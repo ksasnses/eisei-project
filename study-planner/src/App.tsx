@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation, Navigate, Link } from 'react-router-dom';
 import { useStudentStore } from './stores/studentStore';
 import { useAuthStore } from './stores/authStore';
 import { AuthScreen } from './components/AuthScreen';
-import { getDailyMotivation } from './constants/dailyMotivations';
 import { BottomNav } from './components/BottomNav';
 import { DashboardPage } from './pages/DashboardPage';
 import { WizardPage } from './pages/WizardPage';
@@ -13,6 +12,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { SubjectListPage } from './pages/SubjectListPage';
 import { SubjectDetailPage } from './pages/SubjectDetailPage';
 import { ProgressHeatmapPage } from './pages/ProgressHeatmapPage';
+import { UsageGuidePage } from './pages/UsageGuidePage';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const hasPassword = useAuthStore((s) => s.hasPassword)();
@@ -31,7 +31,7 @@ function InitializedGuard({ children }: { children: React.ReactNode }) {
   const isInitialized = useStudentStore((s) => s.isInitialized);
   const location = useLocation();
 
-  if (!isInitialized && location.pathname !== '/wizard') {
+  if (!isInitialized && location.pathname !== '/wizard' && location.pathname !== '/usage-guide') {
     return <Navigate to="/wizard" replace />;
   }
   return <>{children}</>;
@@ -41,34 +41,32 @@ function AppHeader() {
   const profile = useStudentStore((s) => s.profile);
   const hasPassword = useAuthStore((s) => s.hasPassword)();
   const lock = useAuthStore((s) => s.lock);
-  const location = useLocation();
-  const isHome = location.pathname === '/';
-  const title = profile?.name ? `${profile.name}の試験までの道` : '試験までの道';
-  const motivation = getDailyMotivation(new Date());
 
   return (
     <header className="border-b border-slate-200 bg-white px-4 py-3">
       <div className="flex items-center justify-between gap-2">
-        {!isHome && (
-          <h1 className="text-5xl font-bold text-slate-800">{title}</h1>
-        )}
-        {isHome && <div className="flex-1" />}
-        {hasPassword && (
-          <button
-            type="button"
-            onClick={lock}
-            className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
-            aria-label="ロック"
+        <h1 className="min-w-0 flex-1 text-xl font-bold text-slate-800">
+          {profile?.name ? `${profile.name}さんの学習計画` : '学習計画'}
+        </h1>
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            to="/usage-guide"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
           >
-            ロック
-          </button>
-        )}
+            使い方
+          </Link>
+          {hasPassword && (
+            <button
+              type="button"
+              onClick={lock}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              aria-label="ロック"
+            >
+              ロック
+            </button>
+          )}
+        </div>
       </div>
-      {!isHome && (
-        <p className="mt-3 text-sm font-bold text-slate-700">
-          📌 今日の心構え：「{motivation}」
-        </p>
-      )}
     </header>
   );
 }
@@ -144,6 +142,7 @@ function App() {
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/subjects" element={<SubjectListPage />} />
               <Route path="/subjects/:id" element={<SubjectDetailPage />} />
+              <Route path="/usage-guide" element={<UsageGuidePage />} />
             </Routes>
           </main>
           {isInitialized && <BottomNav />}
